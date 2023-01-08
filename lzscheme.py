@@ -51,19 +51,7 @@ func_table = {
   'eq?': is_eq,
 }
 
-def eval_list(src):
-  sexprs = eval(src[1:-1])
-  if len(sexprs) > 0:
-    func_name = sexprs[0]
-    if is_atom(func_name) and func_name in func_table:
-      args = sexprs[1:]
-      print('  calling', func_name, args)
-      res = func_table[func_name](*args)
-      print('  result', res)
-      return res
-  return sexprs
-
-def eval(src):
+def parse(src):
   depth = 0
   buffer = []
   sexprs = []
@@ -71,7 +59,7 @@ def eval(src):
   def flush_buffer():
     if len(buffer) > 0:
       if buffer[0] == '(':
-        result = eval_list(buffer)
+        result = parse(buffer[1:-1])
       else:
         result = ''.join(buffer)
       sexprs.append(result)
@@ -99,6 +87,20 @@ def eval(src):
 def stringify(sexprs):
   return ' '.join(f'({stringify(x)})' if not is_atom(x) else str(x) for x in sexprs)
 
+def seval(sexprs):
+  return [seval_list(sexpr) if is_list(sexpr) else sexpr for sexpr in sexprs]
+
+def seval_list(sexprs):
+  if len(sexprs) > 0:
+    func_name = sexprs[0]
+    if is_atom(func_name) and func_name in func_table:
+      args = sexprs[1:]
+      print('  calling', func_name, args)
+      res = func_table[func_name](*args)
+      print('  result', res)
+      return res
+  return sexprs
+
 def main():
   input_buffer = ''
   input_depth = 0
@@ -107,7 +109,8 @@ def main():
     print(prompt, end='', flush=True)
     input_buffer += stdin.readline()
     try:
-      print(stringify(eval(input_buffer)))
+      parsed = parse(input_buffer)
+      print(stringify(seval(parsed)))
       print()
       input_buffer = ''
       input_depth = 0
