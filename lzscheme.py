@@ -156,22 +156,16 @@ def stringify(context, sexprs):
   return ' '.join(f'({stringify(context, x)})' if not is_atom(x) else str(x) for x in sexprs)
 
 def seval_list(context, sexprs):
-  print('seval_list', stringify(context, sexprs))
   if len(sexprs) > 0:
     context, func = seval(context, sexprs[0])
-    print('  func', func)
     if callable(func):
       args = sexprs[1:]
-      print('  calling', sexprs[0], args)
       context, result = func(context, *args)
-      print('  result', result)
       return context, result
   return context, sexprs
 
 def seval(context, sexpr):
-  print('seval', stringify(context, sexpr))
   sexpr = context.resolve(sexpr)
-  print('  resolved:', stringify(context, sexpr))
   if is_list(sexpr):
     return seval_list(context, sexpr)
   return context, sexpr
