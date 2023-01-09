@@ -180,6 +180,12 @@ def seval_multiple(context, sexprs):
     results.append(result)
   return context, results
 
+def run(src, context=None):
+  context = context or Context(names=builtin_func_table.copy())
+  parsed = parse(src)
+  context, results = seval_multiple(context, parsed)
+  return context, results
+
 def main():
   context = Context(names=builtin_func_table.copy())
   input_buffer = ''
@@ -191,9 +197,8 @@ def main():
     input_buffer += stdin.readline()
     try:
       try:
-        parsed = parse(input_buffer)
-        context, results = seval_multiple(context, parsed)
-        print(stringify(context, results))
+        context, result = run(input_buffer, context)
+        print(stringify(context, result))
         print()
         input_buffer = ''
         input_depth = 0
