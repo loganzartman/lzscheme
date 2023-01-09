@@ -1,6 +1,9 @@
 from sys import stdin
 import traceback
 
+TRUE = '#t'
+FALSE = '#f'
+
 class UnmatchedParenthesesError(RuntimeError):
   def __init__(self, message, *, depth):
     self.message = message
@@ -27,14 +30,14 @@ def is_list(l):
 
 def list_fn(context, l):
   context, l = seval(context, l)
-  return context, is_list(l)
+  return context, TRUE if is_list(l) else FALSE
 
 def is_atom(src):
   return not is_list(src)
 
 def atom_fn(context, sexpr):
   context, sexpr = seval(context, sexpr)
-  return context, is_atom(sexpr)
+  return context, TRUE if is_atom(sexpr) else FALSE
 
 def is_null(l):
   if not is_list(l):
@@ -43,7 +46,7 @@ def is_null(l):
 
 def null_fn(context, l):
   context, l = seval(context, l)
-  return context, is_null(l)
+  return context, TRUE if is_null(l) else FALSE
 
 def is_eq(a, b):
   if not is_atom(a):  
@@ -55,7 +58,7 @@ def is_eq(a, b):
 def eq_fn(context, a, b):
   context, a = seval(context, a)
   context, b = seval(context, b)
-  return context, is_eq(a, b)
+  return context, TRUE if is_eq(a, b) else FALSE
 
 def car(context, l):
   context, l = seval(context, l)
@@ -83,7 +86,7 @@ def cons(context, a, l):
 def cond(context, *clauses):
   for [test, then] in clauses:
     context, test_result = seval(context, test)
-    if test_result == True or test_result == 'else':
+    if test_result == TRUE or test_result == 'else':
       context, then_result = seval(context, then)
       return context, then_result
   return context, None
