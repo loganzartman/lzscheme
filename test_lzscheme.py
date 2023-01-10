@@ -138,3 +138,6 @@ def test_firsts():
       (grape raisin pea)
       (bean carrot eggplant)))
   ''') == [None, ['apple', 'plum', 'grape', 'bean']]
+
+def test_load():
+  assert run_results('(load std.scm) (member? a (a b c))')[1] == '#t'
