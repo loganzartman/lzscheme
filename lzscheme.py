@@ -114,6 +114,7 @@ def lambda_fn(context, params, sexpr):
       new_f_context.define(param, arg)
     _, result = seval(new_f_context, sexpr)
     return f_context, result
+  f._sexpr = ['lambda', params, sexpr]
 
   return context, f
 
@@ -170,10 +171,16 @@ def parse(src):
 
   return sexprs
 
-def stringify(context, sexprs):
-  if not is_list(sexprs):
-    return str(sexprs)
-  return ' '.join(f'({stringify(context, x)})' if not is_atom(x) else str(x) for x in sexprs)
+def stringify(context, sexpr):
+  if sexpr is None:
+    return 'None'
+  if hasattr(sexpr, '_sexpr'):
+    return stringify(context, sexpr._sexpr)
+  if callable(sexpr):
+    return f'function:{sexpr.__name__}'
+  if is_list(sexpr):
+    return f'({" ".join(stringify(context, x) for x in sexpr)})'
+  return str(sexpr)
 
 def seval_list(context, sexprs):
   if len(sexprs) > 0:
