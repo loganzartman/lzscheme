@@ -66,6 +66,9 @@ def load_fn(context, path):
     context, result = run(f.read(), context)
     return context, result
 
+def quote_fn(context, x):
+  return context, x
+
 def car(context, l):
   context, l = seval(context, l)
   if not isinstance(l, list):
@@ -121,6 +124,7 @@ def or_fn(context, a, b):
 
 builtin_func_table = {
   'load': load_fn,
+  'quote': quote_fn,
   'car': car,
   'cdr': cdr,
   'cons': cons,
