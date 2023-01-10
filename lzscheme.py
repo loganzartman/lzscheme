@@ -108,6 +108,11 @@ def lambda_fn(context, params, sexpr):
 
   return context, f
 
+def or_fn(context, a, b):
+  context, a = seval(context, a)
+  context, b = seval(context, b)
+  return context, TRUE if a == TRUE or b == TRUE else FALSE
+
 builtin_func_table = {
   'car': car,
   'cdr': cdr,
@@ -118,6 +123,7 @@ builtin_func_table = {
   'atom?': atom_fn,
   'null?': null_fn,
   'eq?': eq_fn,
+  'or': or_fn,
 }
 
 def parse(src):

@@ -49,12 +49,41 @@ def test_eq_fn():
   assert run_results('(eq? atom banana)') == ['#f']
 
 def test_lat():
-  assert run_results('''
+  lat = '''
     (define lat?
       (lambda (l)
         (cond
           ((null? l) #t)
           ((atom? (car l)) (lat? (cdr l)))
           (else #f))))
+  '''
+
+  assert run_results(f'''
+    {lat}
     (lat? (bacon and eggs))
   ''') == [None, '#t']
+
+  assert run_results(f'''
+    {lat}
+    (lat? (bacon (and eggs)))
+  ''') == [None, '#f']
+
+def test_member():
+  member = '''
+    (define member?
+      (lambda (a lat)
+        (cond
+          ((null? lat) #f)
+          (else (or (eq? (car lat) a) (member? a (cdr lat)))))))
+  '''
+
+  assert run_results(f'''
+    {member}
+    (member? meat (mashed potatoes and meat gravy))
+  ''') == [None, '#t']
+
+  assert run_results(f'''
+    {member}
+    (member? meat (mashed potatoes and meat gravy))
+  ''') == [None, '#t']
+
