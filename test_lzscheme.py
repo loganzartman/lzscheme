@@ -87,3 +87,54 @@ def test_member():
     (member? meat (mashed potatoes and meat gravy))
   ''') == [None, '#t']
 
+def test_rember():
+  rember = '''
+    (define rember
+      (lambda (a lat)
+        (cond
+          ((null? lat) ())
+          ((eq? (car lat) a) (cdr lat))
+          (else (cons (car lat) (rember a (cdr lat)))))))
+  '''
+
+  assert run_results(f'''
+    {rember}
+    (rember meat (mashed potatoes and meat gravy))
+  ''') == [None, ['mashed', 'potatoes', 'and', 'gravy']]
+
+  assert run_results(f'''
+    {rember}
+    (rember mint (lamb chops and mint flavored mint jelly))
+  ''') == [None, ['lamb', 'chops', 'and', 'flavored', 'mint', 'jelly']]
+
+  assert run_results(f'''
+    {rember}
+    (rember toast (bacon lettuce and tomato))
+  ''') == [None, ['bacon', 'lettuce', 'and', 'tomato']]
+
+def test_firsts():
+  firsts = '''
+    (define firsts
+      (lambda (l)
+        (cond
+          ((null? l) ())
+          (else (cons (car (car l)) (firsts (cdr l)))))))
+  '''
+
+  assert run_results(f'''
+    {firsts}
+    (firsts (
+      (apple peach pumpkin)
+      (plum pear cherry)
+      (grape raisin pea)
+      (bean carrot eggplant)))
+  ''') == [None, ['apple', 'plum', 'grape', 'bean']]
+  
+  assert run_results(f'''
+    {firsts}
+    (firsts (
+      (apple peach pumpkin)
+      (plum pear cherry)
+      (grape raisin pea)
+      (bean carrot eggplant)))
+  ''') == [None, ['apple', 'plum', 'grape', 'bean']]
