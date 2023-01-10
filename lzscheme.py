@@ -112,8 +112,8 @@ def lambda_fn(context, params, sexpr):
     for param, arg in zip(params, args):
       new_f_context, arg = seval(new_f_context, arg)
       new_f_context.define(param, arg)
-    new_f_context, result = seval(new_f_context, sexpr)
-    return new_f_context, result
+    _, result = seval(new_f_context, sexpr)
+    return f_context, result
 
   return context, f
 

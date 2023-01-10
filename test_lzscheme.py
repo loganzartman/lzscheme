@@ -48,6 +48,19 @@ def test_eq_fn():
   assert run_results('(eq? atom atom)') == ['#t']
   assert run_results('(eq? atom banana)') == ['#f']
 
+def test_argument_scoping():
+  result = run_results('''
+    (define test?
+      (lambda (a) a))
+    (test 1234)
+    a
+  ''')
+
+  assert str(result[1]) == '1234'
+
+  assert str(result[2]) != '1234'
+  assert result[2] == 'a'
+
 def test_lat():
   lat = '''
     (define lat?
