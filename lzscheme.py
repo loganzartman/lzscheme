@@ -60,6 +60,12 @@ def eq_fn(context, a, b):
   context, b = seval(context, b)
   return context, TRUE if is_eq(a, b) else FALSE
 
+def load_fn(context, path):
+  context, path = seval(context, path)
+  with open(path, 'r') as f:
+    context, result = run(f.read(), context)
+    return context, result
+
 def car(context, l):
   context, l = seval(context, l)
   if not isinstance(l, list):
@@ -114,6 +120,7 @@ def or_fn(context, a, b):
   return context, TRUE if a == TRUE or b == TRUE else FALSE
 
 builtin_func_table = {
+  'load': load_fn,
   'car': car,
   'cdr': cdr,
   'cons': cons,
