@@ -50,7 +50,7 @@ def test_eq_fn():
 
 def test_argument_scoping():
   result = run_results('''
-    (define test?
+    (define test
       (lambda (a) a))
     (test 1234)
     a
