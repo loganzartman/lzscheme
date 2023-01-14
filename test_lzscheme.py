@@ -21,6 +21,20 @@ def test_parse_nested():
   assert parse('(atoms (and lists))') == [['atoms', ['and', 'lists']]]
   assert parse('nested (lists are (very (fun)))') == ['nested', ['lists', 'are', ['very', ['fun']]]]
 
+def test_parse_string():
+  assert parse('"string"') == ['string']
+  assert parse('a "b" c') == ['a', 'b', 'c']
+  assert parse('(a "b" c)') == [['a', 'b', 'c']]
+  assert parse('("apples" ("bananas" "and" "citrus"))') == [['apples', ['bananas', 'and', 'citrus']]]
+
+def test_parse_simple_escapes():
+  assert parse(r'"string\"s"') == ['string"s']
+  assert parse(r'"tab\ttab\ttab"') == ['tab\ttab\ttab']
+
+def test_parse_hex_escapes():
+  assert parse(r'"unicod\x65;"') == ['unicode']
+  assert parse(r'"\x443;\x43a;\x440;\x430;\x457;\x43d;\x0456;"') == ['україні']
+
 def test_eval_atom():
   assert run_results('atom') == ['atom']
 

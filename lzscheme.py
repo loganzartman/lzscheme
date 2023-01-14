@@ -139,30 +139,72 @@ builtin_func_table = {
 }
 
 def parse(src):
+  MODE_NORMAL = 'normal'
+  MODE_STRING = 'string'
+  MODE_ESCAPE = 'escape'
+  MODE_ESCAPE_HEX = 'escape_hex'
+  SIMPLE_ESCAPES = {
+    '"': '"',
+    '\\': '\\',
+    't': '\t',
+    'r': '\r',
+    'n': '\n',
+  }
+
   depth = 0
   buffer = []
+  escape = []
   sexprs = []
+  mode = MODE_NORMAL
 
-  def flush_buffer():
+  def flush_buffer(string=False):
     if len(buffer) > 0:
-      if buffer[0] == '(':
+      if not string and buffer[0] == '(':
         result = parse(buffer[1:-1])
       else:
         result = ''.join(buffer)
       sexprs.append(result)
       buffer.clear()
 
-  for i, c in enumerate(src):
-    if depth == 0 and (c == ' ' or c == '\n'):
-      flush_buffer()
-    else:
-      if c == '(':
+  for c in src:
+    if mode == MODE_NORMAL:
+      if depth == 0 and (c == ' ' or c == '\n'):
+        flush_buffer()
+      elif depth == 0 and c == '"':
+        mode = MODE_STRING
+      elif c == '(':
         depth += 1
+        buffer.append(c)
       elif c == ')':
         if depth == 0:
           raise UnmatchedParenthesesError('Unmatched parenthesis: missing (', depth=depth)
         depth -= 1
-      buffer.append(c)
+        buffer.append(c)
+      else:
+        buffer.append(c)
+    elif mode == MODE_STRING:
+      if c == '\\':
+        mode = MODE_ESCAPE
+      elif c == '"':
+        flush_buffer(string=True)
+        mode = MODE_NORMAL
+      else:
+        buffer.append(c)
+    elif mode == MODE_ESCAPE:
+      if c in SIMPLE_ESCAPES:
+        buffer.append(SIMPLE_ESCAPES[c])
+        mode = MODE_STRING
+      elif c == 'x':
+        mode = MODE_ESCAPE_HEX
+    elif mode == MODE_ESCAPE_HEX:
+      if c == ';':
+        escape_char = chr(int(''.join(escape), 16))
+        escape.clear()
+        buffer.append(escape_char)
+        mode = MODE_STRING
+      else:
+        escape.append(c)
+
 
   if depth > 0:
     raise UnmatchedParenthesesError('Unmatched parenthesis: missing )', depth=depth)
@@ -221,8 +263,8 @@ def main():
     input_buffer += stdin.readline()
     try:
       try:
-        context, result = run(input_buffer, context)
-        print(stringify(context, result))
+        context, results = run(input_buffer, context)
+        print(' '.join(stringify(context, result) for result in results))
         print()
         input_buffer = ''
         input_depth = 0
