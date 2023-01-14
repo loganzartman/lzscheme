@@ -123,7 +123,24 @@ def or_fn(context, a, b):
   context, b = seval(context, b)
   return context, TRUE if a == TRUE or b == TRUE else FALSE
 
+def python_fn(context, bindings, source):
+  if not is_list(bindings):
+    raise Exception('Bindings must be a list')
+  if not isinstance(source, str):
+    raise Exception('Source must be a string')
+  
+  def get_value(name):
+    nonlocal context
+    context, result = seval(context, name)
+    return result
+  
+  py_globals = {name: get_value(name) for name in bindings}
+  py_globals["_context"] = context
+  py_result = eval(source, py_globals)
+  return context, py_result
+
 builtin_func_table = {
+  'python': python_fn,
   'load': load_fn,
   'quote': quote_fn,
   'car': car,
