@@ -139,6 +139,15 @@ def python_fn(context, bindings, source):
   py_result = eval(source, py_globals)
   return context, py_result
 
+def seval_args(fn):
+  def bound(context, *args):
+    new_args = []
+    for arg in args:
+      context, evaled = seval(context, arg)
+      new_args.append(evaled)
+    return fn(context, *new_args)
+  return bound
+
 builtin_func_table = {
   'python': python_fn,
   'load': load_fn,
@@ -153,6 +162,13 @@ builtin_func_table = {
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
+  '+': seval_args(lambda context, a, b: (context, a + b)),
+  '-': seval_args(lambda context, a, b: (context, a - b)),
+  '*': seval_args(lambda context, a, b: (context, a * b)),
+  '/': seval_args(lambda context, a, b: (context, a / b)),
+  'add1': seval_args(lambda context, a: (context, a + 1)),
+  'sub1': seval_args(lambda context, a: (context, a - 1)),
+  'zero?': seval_args(lambda context, a: (context, TRUE if a == 0 else FALSE)),
 }
 
 def parse(src):
@@ -180,6 +196,13 @@ def parse(src):
         result = parse(buffer[1:-1])
       else:
         result = ''.join(buffer)
+        try:
+          result = int(result)
+        except:
+          try:
+            result = float(result)
+          except:
+            pass
       sexprs.append(result)
       buffer.clear()
 

@@ -35,6 +35,12 @@ def test_parse_hex_escapes():
   assert parse(r'"unicod\x65;"') == ['unicode']
   assert parse(r'"\x443;\x43a;\x440;\x430;\x457;\x43d;\x0456;"') == ['україні']
 
+def test_parse_numbers():
+  assert parse('14') == [14]
+  assert parse('-3') == [-3]
+  assert parse('3.14159') == [3.14159]
+  assert parse('a 14') == ['a', 14]
+
 def test_eval_atom():
   assert run_results('atom') == ['atom']
 
@@ -168,3 +174,14 @@ def test_firsts():
 
 def test_load():
   assert run_results('(load std.scm) (member? a (a b c))')[1] == '#t'
+
+def test_math():
+  assert run_results('(+ 1 2)') == [3]
+  assert run_results('(- 3 4)') == [-1]
+  assert run_results('(* 5 6)') == [30]
+  assert run_results('(/ 6 2)') == [3]
+
+  assert run_results('(add1 67)') == [68]
+  assert run_results('(sub1 5)') == [4]
+  assert run_results('(zero? 0)') == ['#t']
+  assert run_results('(zero? 1492)') == ['#f']
