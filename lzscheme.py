@@ -10,13 +10,13 @@ class UnmatchedParenthesesError(RuntimeError):
     self.message = message
     self.depth = depth
 
-class Context:
+class Env:
   def __init__(self, *, names={}, callstack=[]):
     self.names = names
     self.callstack = callstack
 
   def copy(self):
-    return Context(names=self.names.copy(), callstack=self.callstack)
+    return Env(names=self.names.copy(), callstack=self.callstack)
 
   def define(self, name, value):
     self.names[name] = value
@@ -42,25 +42,25 @@ class Context:
 def is_list(l):
   return isinstance(l, list)
 
-def list_fn(context, l):
-  context, l = seval(context, l)
-  return context, TRUE if is_list(l) else FALSE
+def list_fn(env, l):
+  env, l = seval(env, l)
+  return env, TRUE if is_list(l) else FALSE
 
 def is_atom(src):
   return not is_list(src)
 
-def atom_fn(context, sexpr):
-  context, sexpr = seval(context, sexpr)
-  return context, TRUE if is_atom(sexpr) else FALSE
+def atom_fn(env, sexpr):
+  env, sexpr = seval(env, sexpr)
+  return env, TRUE if is_atom(sexpr) else FALSE
 
 def is_null(l):
   if not is_list(l):
     raise Exception(f'Argument {l} is not a list')
   return len(l) == 0
 
-def null_fn(context, l):
-  context, l = seval(context, l)
-  return context, TRUE if is_null(l) else FALSE
+def null_fn(env, l):
+  env, l = seval(env, l)
+  return env, TRUE if is_null(l) else FALSE
 
 def is_eq(a, b):
   if not is_atom(a):  
@@ -69,97 +69,97 @@ def is_eq(a, b):
     raise Exception(f'Argument {b} is not an atom')
   return a == b
 
-def eq_fn(context, a, b):
-  context, a = seval(context, a)
-  context, b = seval(context, b)
-  return context, TRUE if is_eq(a, b) else FALSE
+def eq_fn(env, a, b):
+  env, a = seval(env, a)
+  env, b = seval(env, b)
+  return env, TRUE if is_eq(a, b) else FALSE
 
-def load_fn(context, path):
-  context, path = seval(context, path)
+def load_fn(env, path):
+  env, path = seval(env, path)
   with open(path, 'r') as f:
-    context, result = run(f.read(), context)
-    return context, result
+    env, result = run(f.read(), env)
+    return env, result
 
-def quote_fn(context, x):
-  return context, x
+def quote_fn(env, x):
+  return env, x
 
-def car(context, l):
-  context, l = seval(context, l)
+def car(env, l):
+  env, l = seval(env, l)
   if not isinstance(l, list):
     raise Exception(f'Argument {l} is not a list')
   if not len(l) > 0:
     raise Exception(f'Argument is null list')
-  return context, l[0]
+  return env, l[0]
 
-def cdr(context, l):
-  context, l = seval(context, l)
+def cdr(env, l):
+  env, l = seval(env, l)
   if not isinstance(l, list):
     raise Exception(f'Argument {l} is not a list')
   if not len(l) > 0:
     raise Exception(f'Argument is null list')
-  return context, l[1:]
+  return env, l[1:]
 
-def cons(context, a, l):
-  context, a = seval(context, a)
-  context, l = seval(context, l)
+def cons(env, a, l):
+  env, a = seval(env, a)
+  env, l = seval(env, l)
   if not isinstance(l, list):
     raise Exception(f'Argument {l} is not a list')
-  return context, [a, *l]
+  return env, [a, *l]
 
-def cond(context, *clauses):
+def cond(env, *clauses):
   for [test, then] in clauses:
-    context, test_result = seval(context, test)
+    env, test_result = seval(env, test)
     if test_result == TRUE or test_result == 'else':
-      context, then_result = seval(context, then)
-      return context, then_result
-  return context, None
+      env, then_result = seval(env, then)
+      return env, then_result
+  return env, None
 
-def define_fn(context, name, sexpr):
-  return context.copy().define(name, sexpr), None
+def define_fn(env, name, sexpr):
+  return env.copy().define(name, sexpr), None
 
-def lambda_fn(context, params, sexpr):
+def lambda_fn(env, params, sexpr):
   if not is_list(params):
     raise Exception(f'Parameters must be a list, got: {params}')
 
-  def f(f_context, *args):
-    new_f_context = f_context.copy()
+  def f(f_env, *args):
+    new_f_env = f_env.copy()
     for param, arg in zip(params, args):
-      new_f_context, arg = seval(new_f_context, arg)
-      new_f_context.define(param, arg)
-    _, result = seval(new_f_context, sexpr)
-    return f_context, result
+      new_f_env, arg = seval(new_f_env, arg)
+      new_f_env.define(param, arg)
+    _, result = seval(new_f_env, sexpr)
+    return f_env, result
   f._sexpr = ['lambda', params, sexpr]
 
-  return context, f
+  return env, f
 
-def or_fn(context, a, b):
-  context, a = seval(context, a)
-  context, b = seval(context, b)
-  return context, TRUE if a == TRUE or b == TRUE else FALSE
+def or_fn(env, a, b):
+  env, a = seval(env, a)
+  env, b = seval(env, b)
+  return env, TRUE if a == TRUE or b == TRUE else FALSE
 
-def python_fn(context, bindings, source):
+def python_fn(env, bindings, source):
   if not is_list(bindings):
     raise Exception('Bindings must be a list')
   if not isinstance(source, str):
     raise Exception('Source must be a string')
   
   def get_value(name):
-    nonlocal context
-    context, result = seval(context, name)
+    nonlocal env
+    env, result = seval(env, name)
     return result
   
   py_globals = {name: get_value(name) for name in bindings}
-  py_globals["_context"] = context
+  py_globals["_env"] = env
   py_result = eval(source, py_globals)
-  return context, py_result
+  return env, py_result
 
 def seval_args(fn):
-  def bound(context, *args):
+  def bound(env, *args):
     new_args = []
     for arg in args:
-      context, evaled = seval(context, arg)
+      env, evaled = seval(env, arg)
       new_args.append(evaled)
-    return fn(context, *new_args)
+    return fn(env, *new_args)
   return bound
 
 def abort_fn(_):
@@ -180,13 +180,13 @@ builtin_func_table = {
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
-  '+': seval_args(lambda context, a, b: (context, a + b)),
-  '-': seval_args(lambda context, a, b: (context, a - b)),
-  '*': seval_args(lambda context, a, b: (context, a * b)),
-  '/': seval_args(lambda context, a, b: (context, a / b)),
-  'add1': seval_args(lambda context, a: (context, a + 1)),
-  'sub1': seval_args(lambda context, a: (context, a - 1)),
-  'zero?': seval_args(lambda context, a: (context, TRUE if a == 0 else FALSE)),
+  '+': seval_args(lambda env, a, b: (env, a + b)),
+  '-': seval_args(lambda env, a, b: (env, a - b)),
+  '*': seval_args(lambda env, a, b: (env, a * b)),
+  '/': seval_args(lambda env, a, b: (env, a / b)),
+  'add1': seval_args(lambda env, a: (env, a + 1)),
+  'sub1': seval_args(lambda env, a: (env, a - 1)),
+  'zero?': seval_args(lambda env, a: (env, TRUE if a == 0 else FALSE)),
 }
 
 def parse(src):
@@ -271,55 +271,55 @@ def parse(src):
 
   return sexprs
 
-def stringify(context, sexpr):
+def stringify(env, sexpr):
   if sexpr is None:
     return 'None'
   if hasattr(sexpr, '_sexpr'):
-    return stringify(context, sexpr._sexpr)
+    return stringify(env, sexpr._sexpr)
   if callable(sexpr):
     return f'<builtin:{sexpr.__name__}>'
   if is_list(sexpr):
-    return f'({" ".join(stringify(context, x) for x in sexpr)})'
+    return f'({" ".join(stringify(env, x) for x in sexpr)})'
   return str(sexpr)
 
 def stringify_callstack(callstack):
   lines = []
-  for i, [context, sexpr] in enumerate(callstack):
-    lines.append(f"{i}: {stringify(context, sexpr)}")
+  for i, [env, sexpr] in enumerate(callstack):
+    lines.append(f"{i}: {stringify(env, sexpr)}")
   return '\n'.join(lines)
 
-def seval_list(context, sexprs):
+def seval_list(env, sexprs):
   if len(sexprs) > 0:
-    context, func = seval(context, sexprs[0])
+    env, func = seval(env, sexprs[0])
     if callable(func):
       args = sexprs[1:]
-      context, result = func(context, *args)
-      return context, result
-  return context, sexprs
+      env, result = func(env, *args)
+      return env, result
+  return env, sexprs
 
-def seval(context, sexpr):
-  with context.log_call(sexpr) as context:
-    sexpr = context.resolve(sexpr)
+def seval(env, sexpr):
+  with env.log_call(sexpr) as env:
+    sexpr = env.resolve(sexpr)
     if is_list(sexpr):
-      return seval_list(context, sexpr)
-    return context, sexpr
+      return seval_list(env, sexpr)
+    return env, sexpr
 
-def seval_multiple(context, sexprs):
-  with context.log_call(sexprs) as context:
+def seval_multiple(env, sexprs):
+  with env.log_call(sexprs) as env:
     results = []
     for sexpr in sexprs:
-      context, result = seval(context, sexpr)
+      env, result = seval(env, sexpr)
       results.append(result)
-    return context, results
+    return env, results
 
-def run(src, context=None):
-  context = context or Context(names=builtin_func_table.copy())
+def run(src, env=None):
+  env = env or Env(names=builtin_func_table.copy())
   parsed = parse(src)
-  context, results = seval_multiple(context, parsed)
-  return context, results
+  env, results = seval_multiple(env, parsed)
+  return env, results
 
 def main():
-  context = Context(names=builtin_func_table.copy())
+  env = Env(names=builtin_func_table.copy())
   input_buffer = ''
   input_depth = 0
 
@@ -329,8 +329,8 @@ def main():
     input_buffer += stdin.readline()
     try:
       try:
-        context, results = run(input_buffer, context)
-        print(' '.join(stringify(context, result) for result in results))
+        env, results = run(input_buffer, env)
+        print(' '.join(stringify(env, result) for result in results))
         print()
         input_buffer = ''
         input_depth = 0
