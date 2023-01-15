@@ -1,4 +1,4 @@
-from lzscheme import parse, run
+from lzscheme import parse, run, stringify_callstack
 
 def run_results(src, context=None):
   _, results = run(src, context)
@@ -185,3 +185,15 @@ def test_math():
   assert run_results('(sub1 5)') == [4]
   assert run_results('(zero? 0)') == ['#t']
   assert run_results('(zero? 1492)') == ['#f']
+
+def test_traceback():
+  try:
+    run_results('(cons a (cons b (abort)))')
+    assert False
+  except Exception as e:
+    assert hasattr(e, '_callstack')
+    assert stringify_callstack(e._callstack) == \
+      "0: ((cons a (cons b (abort))))\n" \
+      "1: (cons a (cons b (abort)))\n" \
+      "2: (cons b (abort))\n" \
+      "3: (abort)"

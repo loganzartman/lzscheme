@@ -1,4 +1,5 @@
 from sys import stdin
+from contextlib import contextmanager
 import traceback
 
 TRUE = '#t'
@@ -10,11 +11,12 @@ class UnmatchedParenthesesError(RuntimeError):
     self.depth = depth
 
 class Context:
-  def __init__(self, *, names={}):
+  def __init__(self, *, names={}, callstack=[]):
     self.names = names
+    self.callstack = callstack
 
   def copy(self):
-    return Context(names=self.names.copy())
+    return Context(names=self.names.copy(), callstack=self.callstack)
 
   def define(self, name, value):
     self.names[name] = value
@@ -24,6 +26,18 @@ class Context:
     if isinstance(name, str) and name in self.names:
       return self.names[name]
     return name
+  
+  @contextmanager
+  def log_call(self, sexpr):
+    self.callstack.append((self, sexpr))
+    try:
+      yield self
+    except Exception as e:
+      if not hasattr(e, '_callstack'):
+        e._callstack = self.callstack.copy()
+      raise e
+    finally:
+      self.callstack.pop()
 
 def is_list(l):
   return isinstance(l, list)
@@ -148,7 +162,11 @@ def seval_args(fn):
     return fn(context, *new_args)
   return bound
 
+def abort_fn(_):
+  raise Exception('Aborted!')
+
 builtin_func_table = {
+  'abort': abort_fn,
   'python': python_fn,
   'load': load_fn,
   'quote': quote_fn,
@@ -259,10 +277,16 @@ def stringify(context, sexpr):
   if hasattr(sexpr, '_sexpr'):
     return stringify(context, sexpr._sexpr)
   if callable(sexpr):
-    return f'function:{sexpr.__name__}'
+    return f'<builtin:{sexpr.__name__}>'
   if is_list(sexpr):
     return f'({" ".join(stringify(context, x) for x in sexpr)})'
   return str(sexpr)
+
+def stringify_callstack(callstack):
+  lines = []
+  for i, [context, sexpr] in enumerate(callstack):
+    lines.append(f"{i}: {stringify(context, sexpr)}")
+  return '\n'.join(lines)
 
 def seval_list(context, sexprs):
   if len(sexprs) > 0:
@@ -274,17 +298,19 @@ def seval_list(context, sexprs):
   return context, sexprs
 
 def seval(context, sexpr):
-  sexpr = context.resolve(sexpr)
-  if is_list(sexpr):
-    return seval_list(context, sexpr)
-  return context, sexpr
+  with context.log_call(sexpr) as context:
+    sexpr = context.resolve(sexpr)
+    if is_list(sexpr):
+      return seval_list(context, sexpr)
+    return context, sexpr
 
 def seval_multiple(context, sexprs):
-  results = []
-  for sexpr in sexprs:
-    context, result = seval(context, sexpr)
-    results.append(result)
-  return context, results
+  with context.log_call(sexprs) as context:
+    results = []
+    for sexpr in sexprs:
+      context, result = seval(context, sexpr)
+      results.append(result)
+    return context, results
 
 def run(src, context=None):
   context = context or Context(names=builtin_func_table.copy())
@@ -314,7 +340,11 @@ def main():
         else:
           raise e
     except Exception as e:
-      traceback.print_exc()
+      if hasattr(e, '_callstack'):
+        print(f"Error: {e}")
+        print(stringify_callstack(e._callstack))
+      else:
+        traceback.print_exc()
       print()
       input_buffer = ''
       input_depth = 0
