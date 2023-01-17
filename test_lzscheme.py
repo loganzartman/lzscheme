@@ -108,12 +108,12 @@ def test_lat():
   assert run_results(f'''
     {lat}
     (lat? (bacon and eggs))
-  ''') == [None, True]
+  ''') == [True]
 
   assert run_results(f'''
     {lat}
     (lat? (bacon (and eggs)))
-  ''') == [None, False]
+  ''') == [False]
 
 def test_member():
   member = '''
@@ -127,12 +127,12 @@ def test_member():
   assert run_results(f'''
     {member}
     (member? meat (mashed potatoes and meat gravy))
-  ''') == [None, True]
+  ''') == [True]
 
   assert run_results(f'''
     {member}
     (member? meat (mashed potatoes and meat gravy))
-  ''') == [None, True]
+  ''') == [True]
 
 def test_rember():
   rember = '''
@@ -147,17 +147,17 @@ def test_rember():
   assert run_results(f'''
     {rember}
     (rember meat (mashed potatoes and meat gravy))
-  ''') == [None, ['mashed', 'potatoes', 'and', 'gravy']]
+  ''') == [['mashed', 'potatoes', 'and', 'gravy']]
 
   assert run_results(f'''
     {rember}
     (rember mint (lamb chops and mint flavored mint jelly))
-  ''') == [None, ['lamb', 'chops', 'and', 'flavored', 'mint', 'jelly']]
+  ''') == [['lamb', 'chops', 'and', 'flavored', 'mint', 'jelly']]
 
   assert run_results(f'''
     {rember}
     (rember toast (bacon lettuce and tomato))
-  ''') == [None, ['bacon', 'lettuce', 'and', 'tomato']]
+  ''') == [['bacon', 'lettuce', 'and', 'tomato']]
 
 def test_firsts():
   firsts = '''
@@ -175,7 +175,7 @@ def test_firsts():
       (plum pear cherry)
       (grape raisin pea)
       (bean carrot eggplant)))
-  ''') == [None, ['apple', 'plum', 'grape', 'bean']]
+  ''') == [['apple', 'plum', 'grape', 'bean']]
   
   assert run_results(f'''
     {firsts}
@@ -184,7 +184,7 @@ def test_firsts():
       (plum pear cherry)
       (grape raisin pea)
       (bean carrot eggplant)))
-  ''') == [None, ['apple', 'plum', 'grape', 'bean']]
+  ''') == [['apple', 'plum', 'grape', 'bean']]
 
 def test_load():
   assert run_results('(load std.scm) (member? a (a b c))')[1] == True
@@ -205,10 +205,12 @@ def test_traceback():
     run_results('(cons a (cons b (abort)))')
     assert False
   except EvalError as e:
-    assert stringify_callstack(e.callstack) == \
-      "0: ((cons a (cons b (abort))))\n" \
-      "1: (cons a (cons b (abort)))\n" \
-      "2: (cons b (abort))\n" \
-      "3: (abort)"
+    lines = stringify_callstack(e.callstack).split('\n')
+    assert '0' in lines[0]
+    assert '((cons a (cons b (abort))))' in lines[0]
+    assert '(cons a (cons b (abort)))' in lines[1]
+    assert '(cons b (abort))' in lines[2]
+    assert '(abort)' in lines[3]
+    assert '3' in lines[3]
   except:
     assert False

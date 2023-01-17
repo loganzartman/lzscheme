@@ -287,7 +287,7 @@ builtin_env = Env.from_functions({
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
-  'and': and_fn,
+  # 'and': and_fn,
   '+': lambda env, a, b: (env, Value(numeric_value(a) + numeric_value(b))),
   '-': lambda env, a, b: (env, Value(numeric_value(a) - numeric_value(b))),
   '*': lambda env, a, b: (env, Value(numeric_value(a) * numeric_value(b))),
@@ -322,10 +322,14 @@ def parse(src: Iterable[str]) -> Pair:
       if string:
         result = Value(''.join(buffer))
       else:
+        s = ''.join(buffer)
         if buffer[0] == '(':
           result = parse(buffer[1:-1])
+        elif s == '#t':
+          result = Value(True)
+        elif s == '#f':
+          result = Value(False)
         else:
-          s = ''.join(buffer)
           try:
             result = Value(int(s))
           except:
