@@ -1,5 +1,6 @@
 from sys import stdin
 from contextlib import contextmanager
+from textwrap import indent
 from typing import Union, Optional, Callable, Any, Iterable, Tuple
 import traceback
 
@@ -159,14 +160,16 @@ def assert_symbol(x: Optional[Sexpr]) -> Symbol:
   return x
 
 def car(pair: Pair):
+  if is_null(pair):
+    raise Exception('pair is null so it has no car')
   return pair.car
 
 def cdr(pair: Pair):
+  if is_null(pair):
+    raise Exception('pair is null so it has no cdr')
   return pair.cdr
 
 def cons(a: Sexpr, pair: Pair) -> Pair:
-  if car(pair) is None:
-    return Pair(a, None)
   return Pair(a, pair)
 
 def is_atom(x: Sexpr) -> bool:
@@ -176,13 +179,13 @@ def is_list(x: Sexpr) -> bool:
   return isinstance(x, Pair)
   
 def is_null(x: Sexpr) -> bool:
-  return car(x) is None if isinstance(x, Pair) else False
+  return x.car is None if isinstance(x, Pair) else False
 
 def is_lambda(x: Sexpr) -> bool:
-  return isinstance(x, Pair) and car(x) == Symbol('lambda')
+  return isinstance(x, Pair) and not is_null(x) and Symbol('lambda') == car(x)
 
 def is_truthy(x: Sexpr) -> bool:
-  if Symbol(FALSE) == x:
+  if Value(False) == x:
     return False
   return True
 
@@ -245,15 +248,15 @@ def define_fn(env: Env, name: Sexpr, sexpr: Sexpr):
 
 def or_fn(env: Env, a: Sexpr, b: Sexpr):
   if is_truthy(a):
-    return a
+    return env, a
   if is_truthy(b):
-    return b
-  return Value(False)
+    return env, b
+  return env, Value(False)
 
 def and_fn(env: Env, a: Sexpr, b: Sexpr):
   if is_truthy(a) and is_truthy(b):
-    return b
-  return Value(False)
+    return env, b
+  return env, Value(False)
 
 def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
   if not is_list(bindings):
@@ -284,6 +287,7 @@ builtin_env = Env.from_functions({
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
+  'and': and_fn,
   '+': lambda env, a, b: (env, Value(numeric_value(a) + numeric_value(b))),
   '-': lambda env, a, b: (env, Value(numeric_value(a) - numeric_value(b))),
   '*': lambda env, a, b: (env, Value(numeric_value(a) * numeric_value(b))),
@@ -383,17 +387,26 @@ def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
     return 'None'
   return sexpr.external()
 
-def stringify_callstack(callstack: list[Tuple[Env, Sexpr]]) -> str:
+def stringify_bindings(env: Env):
+  lines = [f'{name.value}: {stringify(env, value)}' 
+    for name, value in env.names.items() 
+    if not isinstance(value, NativeFunction) and not is_lambda(value)]
+  return '\n'.join(lines)
+
+def stringify_callstack(callstack: list[Tuple[Env, Sexpr]], *, include_bindings: bool=False) -> str:
   lines: list[str] = []
   for i, [env, sexpr] in enumerate(callstack):
-    lines.append(f"{i}: {stringify(env, sexpr)}")
+    lines.append(f"{i: >4}. {stringify(env, sexpr)}")
+    if include_bindings:
+      lines.append(indent(stringify_bindings(env), ' ' * 6))
+      lines.append('')
   return '\n'.join(lines)
 
 def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
   with env.log_call(sexpr) as env:
     if isinstance(sexpr, Symbol):
       sexpr = env.resolve(sexpr)
-    if isinstance(sexpr, Pair):
+    if isinstance(sexpr, Pair) and not is_null(sexpr):
       first = car(sexpr)
       if first is None: # null list
         return env, sexpr
@@ -405,7 +418,21 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
           raise Exception('quote requires an argument')
         return env, args
       if Symbol('cond') == first:
-        raise NotImplemented('cond not implemented')
+        args = assert_pair(cdr(sexpr))
+        for arg in args:
+          arg = assert_pair(arg)
+          predicate = car(arg)
+          if predicate is None:
+            raise Exception(f'missing predicate in cond clause: {arg}')
+          env, predicate_result = seval(env, predicate)
+          if is_truthy(predicate_result) or Symbol('else') == predicate_result:
+            expressions = assert_pair(cdr(arg))
+            result = None
+            for expression in expressions:
+              env, result = seval(env, expression)
+            if result is None:
+              raise Exception(f'no expressions in cond clause: {arg}')
+            return env, result
       if isinstance(first, NativeFunction):
         args = assert_pair(cdr(sexpr))
         evaled_args: list[Sexpr] = []
@@ -465,8 +492,9 @@ def main():
         else:
           raise e
     except EvalError as e:
+      print(stringify_callstack(e.callstack, include_bindings=False))
       print(f"Error: {e}")
-      print(stringify_callstack(e.callstack))
+      print('  Traceback shown above.')
       print()
       input_buffer = ''
       input_depth = 0
@@ -477,5 +505,4 @@ def main():
       input_depth = 0
 
 if __name__ == '__main__':
-  run('(cons a (b c))')
   main()
