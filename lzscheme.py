@@ -181,6 +181,25 @@ def is_null(x: Sexpr) -> bool:
 def is_lambda(x: Sexpr) -> bool:
   return isinstance(x, Pair) and car(x) == Symbol('lambda')
 
+def is_truthy(x: Sexpr) -> bool:
+  if Symbol(FALSE) == x:
+    return False
+  return True
+
+def string_value(x: Sexpr) -> str:
+  if not isinstance(x, Value) and not isinstance(x, Symbol):
+    raise Exception(f'argument must be Value or Symbol, was {x}')
+  if not isinstance(x.value, str):
+    raise Exception(f'argument must have a string value, was {type(x)}')
+  return x.value
+
+def numeric_value(x: Sexpr) -> Union[int, float]:
+  if not isinstance(x, Value):
+    raise Exception(f'argument must be Value, was {x}')
+  if not isinstance(x.value, int) and not isinstance(x.value, float):
+    raise Exception(f'argument must have a numeric value, was {type(x)}')
+  return x.value
+
 def reverse(p: Pair) -> Pair:
   result = Pair()
   for elem in p:
@@ -195,14 +214,14 @@ def is_eq(a: Sexpr, b: Sexpr):
 
   return a == b
 
-def atom_fn(_: Env, a: Sexpr):
-  return is_atom(a)
+def atom_fn(env: Env, a: Sexpr):
+  return env, Value(is_atom(a))
 
-def null_fn(_: Env, a: Sexpr):
-  return is_null(a)
+def null_fn(env: Env, a: Sexpr):
+  return env, Value(is_null(a))
 
 def eq_fn(env: Env, a: Sexpr, b: Sexpr):
-  return env, TRUE if is_eq(a, b) else FALSE
+  return env, Value(is_eq(a, b))
 
 def car_fn(env: Env, a: Sexpr):
   return env, car(assert_pair(a))
@@ -214,12 +233,7 @@ def cons_fn(env: Env, a: Sexpr, b: Sexpr):
   return env, cons(a, assert_pair(b))
 
 def load_fn(env: Env, path: Sexpr):
-  if not isinstance(path, Value):
-    raise Exception(f'path must be Value, was {path}')
-  if not isinstance(path.value, str):
-    raise Exception(f'path must be a string, was {type(path)}')
-
-  with open(path.value, 'r') as f:
+  with open(string_value(path), 'r') as f:
     env, result = run(f.read(), env)
     return env, result
 
@@ -230,15 +244,20 @@ def define_fn(env: Env, name: Sexpr, sexpr: Sexpr):
   return env.copy().define(name, sexpr), None
 
 def or_fn(env: Env, a: Sexpr, b: Sexpr):
-  return env, TRUE if a == TRUE or b == TRUE else FALSE
+  if is_truthy(a):
+    return a
+  if is_truthy(b):
+    return b
+  return Value(False)
+
+def and_fn(env: Env, a: Sexpr, b: Sexpr):
+  if is_truthy(a) and is_truthy(b):
+    return b
+  return Value(False)
 
 def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
   if not is_list(bindings):
     raise Exception(f'bindings must be a list, was {bindings}')
-  if not isinstance(source, Value):
-    raise Exception(f'source must be a Value, was {source}')
-  if not isinstance(source.value, str):
-    raise Exception(f'source must be a string, was {type(source)}')
   
   def get_value(sexpr: Sexpr):
     nonlocal env
@@ -247,7 +266,7 @@ def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
   
   py_globals: dict[str, Any] = {assert_symbol(sexpr).value: get_value(sexpr) for sexpr in assert_pair(bindings)}
   py_globals["_env"] = env
-  py_result = eval(source.value, py_globals)
+  py_result = eval(string_value(source), py_globals)
   return env, py_result
 
 def abort_fn(_):
@@ -265,13 +284,13 @@ builtin_env = Env.from_functions({
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
-  '+': lambda env, a, b: (env, a + b),
-  '-': lambda env, a, b: (env, a - b),
-  '*': lambda env, a, b: (env, a * b),
-  '/': lambda env, a, b: (env, a / b),
-  'add1': lambda env, a: (env, a + 1),
-  'sub1': lambda env, a: (env, a - 1),
-  'zero?': lambda env, a: (env, TRUE if a == 0 else FALSE),
+  '+': lambda env, a, b: (env, Value(numeric_value(a) + numeric_value(b))),
+  '-': lambda env, a, b: (env, Value(numeric_value(a) - numeric_value(b))),
+  '*': lambda env, a, b: (env, Value(numeric_value(a) * numeric_value(b))),
+  '/': lambda env, a, b: (env, Value(numeric_value(a) / numeric_value(b))),
+  'add1': lambda env, a: (env, Value(numeric_value(a) + 1)),
+  'sub1': lambda env, a: (env, Value(numeric_value(a) - 1)),
+  'zero?': lambda env, a: (env, Value(numeric_value(a) == 0)),
 })
 
 def parse(src: Iterable[str]) -> Pair:
@@ -376,8 +395,8 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
       sexpr = env.resolve(sexpr)
     if isinstance(sexpr, Pair):
       first = car(sexpr)
-      if first is None:
-        raise Exception('first list element was None')
+      if first is None: # null list
+        return env, sexpr
       if isinstance(first, Symbol):
         first = env.resolve(first)
       if Symbol('quote') == first:
