@@ -1,8 +1,22 @@
-from lzscheme import parse, run, stringify_callstack
+from typing import Any, Optional
+from lzscheme import parse as parse_internal, run, stringify_callstack
+from lzscheme import Pair, Sexpr, Env, EvalError, NativeFunction
 
-def run_results(src, context=None):
-  _, results = run(src, context)
-  return results
+# temporary bridge for converting tests
+def pythonify(s: Sexpr) -> Any:
+  if isinstance(s, Pair):
+    return [pythonify(el) for el in s]
+  if isinstance(s, NativeFunction):
+    return s.fn
+  return s.value
+
+def parse(s: str):
+  result = parse_internal(s)
+  return pythonify(result)
+
+def run_results(src: str, env: Optional[Env]=None):
+  _, results = run(src, env)
+  return pythonify(results)
 
 def test_parse_atoms():
   assert parse('atom') == ['atom']
@@ -57,16 +71,16 @@ def test_cons():
   assert run_results('(cons a (b c))') == [['a', 'b', 'c']]
 
 def test_atom_fn():
-  assert run_results('(atom? atom)') == ['#t']
-  assert run_results('(atom? (atom))') == ['#f']
+  assert run_results('(atom? atom)') == [True]
+  assert run_results('(atom? (atom))') == [False]
 
 def test_null_fn():
-  assert run_results('(null? ())') == ['#t']
-  assert run_results('(null? (atom))') == ['#f']
+  assert run_results('(null? ())') == [True]
+  assert run_results('(null? (atom))') == [False]
 
 def test_eq_fn():
-  assert run_results('(eq? atom atom)') == ['#t']
-  assert run_results('(eq? atom banana)') == ['#f']
+  assert run_results('(eq? atom atom)') == [True]
+  assert run_results('(eq? atom banana)') == [False]
 
 def test_argument_scoping():
   result = run_results('''
@@ -76,10 +90,10 @@ def test_argument_scoping():
     a
   ''')
 
-  assert str(result[1]) == '1234'
+  assert str(result[0]) == '1234'
 
-  assert str(result[2]) != '1234'
-  assert result[2] == 'a'
+  assert str(result[1]) != '1234'
+  assert result[1] == 'a'
 
 def test_lat():
   lat = '''
@@ -94,12 +108,12 @@ def test_lat():
   assert run_results(f'''
     {lat}
     (lat? (bacon and eggs))
-  ''') == [None, '#t']
+  ''') == [None, True]
 
   assert run_results(f'''
     {lat}
     (lat? (bacon (and eggs)))
-  ''') == [None, '#f']
+  ''') == [None, False]
 
 def test_member():
   member = '''
@@ -113,12 +127,12 @@ def test_member():
   assert run_results(f'''
     {member}
     (member? meat (mashed potatoes and meat gravy))
-  ''') == [None, '#t']
+  ''') == [None, True]
 
   assert run_results(f'''
     {member}
     (member? meat (mashed potatoes and meat gravy))
-  ''') == [None, '#t']
+  ''') == [None, True]
 
 def test_rember():
   rember = '''
@@ -173,7 +187,7 @@ def test_firsts():
   ''') == [None, ['apple', 'plum', 'grape', 'bean']]
 
 def test_load():
-  assert run_results('(load std.scm) (member? a (a b c))')[1] == '#t'
+  assert run_results('(load std.scm) (member? a (a b c))')[1] == True
 
 def test_math():
   assert run_results('(+ 1 2)') == [3]
@@ -183,17 +197,18 @@ def test_math():
 
   assert run_results('(add1 67)') == [68]
   assert run_results('(sub1 5)') == [4]
-  assert run_results('(zero? 0)') == ['#t']
-  assert run_results('(zero? 1492)') == ['#f']
+  assert run_results('(zero? 0)') == [True]
+  assert run_results('(zero? 1492)') == [False]
 
 def test_traceback():
   try:
     run_results('(cons a (cons b (abort)))')
     assert False
-  except Exception as e:
-    assert hasattr(e, '_callstack')
-    assert stringify_callstack(e._callstack) == \
+  except EvalError as e:
+    assert stringify_callstack(e.callstack) == \
       "0: ((cons a (cons b (abort))))\n" \
       "1: (cons a (cons b (abort)))\n" \
       "2: (cons b (abort))\n" \
       "3: (abort)"
+  except:
+    assert False

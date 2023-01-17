@@ -1,195 +1,280 @@
 from sys import stdin
 from contextlib import contextmanager
+from typing import Union, Optional, Callable, Any, Iterable, Tuple
 import traceback
 
 TRUE = '#t'
 FALSE = '#f'
 
 class UnmatchedParenthesesError(RuntimeError):
-  def __init__(self, message, *, depth):
+  def __init__(self, message: str, *, depth: int):
     self.message = message
     self.depth = depth
 
+class Symbol:
+  def __init__(self, value: str):
+    self.value = value
+  
+  def __repr__(self) -> str:
+    return f'Symbol("{self.value}")'
+  
+  def __hash__(self) -> int:
+    return hash(self.value)
+  
+  def __eq__(self, o: object) -> bool:
+    if not isinstance(o, Symbol):
+      return False
+    return o.value == self.value
+  
+  def external(self) -> str:
+    return self.value
+
+ValueType = Union[str, bool, int, float]
+
+class Value:
+  def __init__(self, value: ValueType):
+    self.value = value
+  
+  def __repr__(self) -> str:
+    return f'Value({repr(self.value)})'
+
+  def __eq__(self, o: object) -> bool:
+    if not isinstance(o, Value):
+      return False
+    return o.value == self.value
+  
+  def external(self) -> str:
+    if isinstance(self.value, str):
+      return f'"{self.value}"'
+    if isinstance(self.value, bool):
+      return TRUE if self.value else FALSE
+    return str(self.value)
+
+class NativeFunction:
+  def __init__(self, fn: Callable[..., Any]):
+    self.fn = fn
+  
+  def __repr__(self) -> str:
+    return f'NativeFunction({self.fn.__name__})'
+
+  def external(self) -> str:
+    return f'<builtin:{self.fn.__name__}>'
+
+Atom = Union[Symbol, Value, NativeFunction]
+Sexpr = Union[Atom, 'Pair']
+
+class Pair:
+  def __init__(self, car: Optional[Sexpr]=None, cdr: Optional[Sexpr]=None):
+    self.car = car
+    self.cdr = cdr
+  
+  def __repr__(self) -> str:
+    return f'Pair({repr(self.car), repr(self.cdr)})'
+
+  def __eq__(self, o: object) -> bool:
+    if not isinstance(o, Pair):
+      return False
+    return o.car == self.car and o.cdr == self.cdr
+  
+  def __iter__(self):
+    p: Optional[Sexpr] = self
+    elem = self.car
+    while elem is not None:
+      yield elem
+      p = p.cdr
+      if p is None:
+        break
+      elem = assert_pair(p).car
+  
+  def __len__(self) -> int:
+    counter = 0
+    for _ in self:
+      counter += 1
+    return counter
+  
+  def __getitem__(self, i: int) -> Sexpr:
+    if i < 0:
+      raise IndexError(f'negative index {i}')
+    counter = 0
+    for el in self:
+      if counter == i:
+        return el
+      counter += 1
+    raise IndexError(f'index {i} greater than length {counter}')
+  
+  def external(self) -> str:
+    inner = ' '.join(x.external() for x in self)
+    return f'({inner})'
+
+class EvalError(RuntimeError):
+  def __init__(self, message: str, *, callstack: list[Tuple['Env', Sexpr]]):
+    self.message = message
+    self.callstack = callstack
+
 class Env:
-  def __init__(self, *, names={}, callstack=[]):
+  names: dict[Symbol, Sexpr]
+  callstack: list[Tuple['Env', Sexpr]]
+
+  def __init__(self, *, names: dict[Symbol, Sexpr]={}, callstack: list[Tuple['Env', Sexpr]]=[]):
     self.names = names
     self.callstack = callstack
 
   def copy(self):
     return Env(names=self.names.copy(), callstack=self.callstack)
 
-  def define(self, name, value):
-    self.names[name] = value
+  def define(self, symbol: Symbol, value: Sexpr):
+    self.names[symbol] = value
     return self
 
-  def resolve(self, name):
-    if isinstance(name, str) and name in self.names:
-      return self.names[name]
-    return name
+  def resolve(self, sexpr: Sexpr) -> Sexpr:
+    if isinstance(sexpr, Symbol) and sexpr in self.names:
+      return self.names[sexpr]
+    return sexpr
   
   @contextmanager
-  def log_call(self, sexpr):
+  def log_call(self, sexpr: Sexpr):
     self.callstack.append((self, sexpr))
     try:
       yield self
-    except Exception as e:
-      if not hasattr(e, '_callstack'):
-        e._callstack = self.callstack.copy()
+    except EvalError as e:
       raise e
+    except Exception as e:
+      raise EvalError(str(e), callstack=self.callstack.copy()) from e
     finally:
       self.callstack.pop()
+  
+  @staticmethod
+  def from_functions(functions: dict[str, Callable[..., Any]]) -> 'Env':
+    names: dict[Symbol, Sexpr] = {Symbol(k): NativeFunction(v) for k, v in functions.items()}
+    return Env(names=names)
 
-def is_list(l):
-  return isinstance(l, list)
+def assert_pair(x: Optional[Sexpr]) -> Pair:
+  if not isinstance(x, Pair):
+    raise Exception(f'{x} must be a Pair')
+  return x
 
-def list_fn(env, l):
-  env, l = seval(env, l)
-  return env, TRUE if is_list(l) else FALSE
+def assert_symbol(x: Optional[Sexpr]) -> Symbol:
+  if not isinstance(x, Symbol):
+    raise Exception(f'{x} must be a Symbol')
+  return x
 
-def is_atom(src):
-  return not is_list(src)
+def car(pair: Pair):
+  return pair.car
 
-def atom_fn(env, sexpr):
-  env, sexpr = seval(env, sexpr)
-  return env, TRUE if is_atom(sexpr) else FALSE
+def cdr(pair: Pair):
+  return pair.cdr
 
-def is_null(l):
-  if not is_list(l):
-    raise Exception(f'Argument {l} is not a list')
-  return len(l) == 0
+def cons(a: Sexpr, pair: Pair) -> Pair:
+  if car(pair) is None:
+    return Pair(a, None)
+  return Pair(a, pair)
 
-def null_fn(env, l):
-  env, l = seval(env, l)
-  return env, TRUE if is_null(l) else FALSE
+def is_atom(x: Sexpr) -> bool:
+  return isinstance(x, Symbol) or isinstance(x, Value) or isinstance(x, NativeFunction)
 
-def is_eq(a, b):
+def is_list(x: Sexpr) -> bool:
+  return isinstance(x, Pair)
+  
+def is_null(x: Sexpr) -> bool:
+  return car(x) is None if isinstance(x, Pair) else False
+
+def is_lambda(x: Sexpr) -> bool:
+  return isinstance(x, Pair) and car(x) == Symbol('lambda')
+
+def reverse(p: Pair) -> Pair:
+  result = Pair()
+  for elem in p:
+    result = cons(elem, result)
+  return result
+
+def is_eq(a: Sexpr, b: Sexpr):
   if not is_atom(a):  
     raise Exception(f'Argument {a} is not an atom')
   if not is_atom(b):  
     raise Exception(f'Argument {b} is not an atom')
+
   return a == b
 
-def eq_fn(env, a, b):
-  env, a = seval(env, a)
-  env, b = seval(env, b)
+def atom_fn(_: Env, a: Sexpr):
+  return is_atom(a)
+
+def null_fn(_: Env, a: Sexpr):
+  return is_null(a)
+
+def eq_fn(env: Env, a: Sexpr, b: Sexpr):
   return env, TRUE if is_eq(a, b) else FALSE
 
-def load_fn(env, path):
-  env, path = seval(env, path)
-  with open(path, 'r') as f:
+def car_fn(env: Env, a: Sexpr):
+  return env, car(assert_pair(a))
+
+def cdr_fn(env: Env, a: Sexpr):
+  return env, cdr(assert_pair(a))
+
+def cons_fn(env: Env, a: Sexpr, b: Sexpr):
+  return env, cons(a, assert_pair(b))
+
+def load_fn(env: Env, path: Sexpr):
+  if not isinstance(path, Value):
+    raise Exception(f'path must be Value, was {path}')
+  if not isinstance(path.value, str):
+    raise Exception(f'path must be a string, was {type(path)}')
+
+  with open(path.value, 'r') as f:
     env, result = run(f.read(), env)
     return env, result
 
-def quote_fn(env, x):
-  return env, x
+def define_fn(env: Env, name: Sexpr, sexpr: Sexpr):
+  if not isinstance(name, Symbol):
+    raise Exception(f'name must be Symbol, was {name}')
 
-def car(env, l):
-  env, l = seval(env, l)
-  if not isinstance(l, list):
-    raise Exception(f'Argument {l} is not a list')
-  if not len(l) > 0:
-    raise Exception(f'Argument is null list')
-  return env, l[0]
-
-def cdr(env, l):
-  env, l = seval(env, l)
-  if not isinstance(l, list):
-    raise Exception(f'Argument {l} is not a list')
-  if not len(l) > 0:
-    raise Exception(f'Argument is null list')
-  return env, l[1:]
-
-def cons(env, a, l):
-  env, a = seval(env, a)
-  env, l = seval(env, l)
-  if not isinstance(l, list):
-    raise Exception(f'Argument {l} is not a list')
-  return env, [a, *l]
-
-def cond(env, *clauses):
-  for [test, then] in clauses:
-    env, test_result = seval(env, test)
-    if test_result == TRUE or test_result == 'else':
-      env, then_result = seval(env, then)
-      return env, then_result
-  return env, None
-
-def define_fn(env, name, sexpr):
   return env.copy().define(name, sexpr), None
 
-def lambda_fn(env, params, sexpr):
-  if not is_list(params):
-    raise Exception(f'Parameters must be a list, got: {params}')
-
-  def f(f_env, *args):
-    new_f_env = f_env.copy()
-    for param, arg in zip(params, args):
-      new_f_env, arg = seval(new_f_env, arg)
-      new_f_env.define(param, arg)
-    _, result = seval(new_f_env, sexpr)
-    return f_env, result
-  f._sexpr = ['lambda', params, sexpr]
-
-  return env, f
-
-def or_fn(env, a, b):
-  env, a = seval(env, a)
-  env, b = seval(env, b)
+def or_fn(env: Env, a: Sexpr, b: Sexpr):
   return env, TRUE if a == TRUE or b == TRUE else FALSE
 
-def python_fn(env, bindings, source):
+def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
   if not is_list(bindings):
-    raise Exception('Bindings must be a list')
-  if not isinstance(source, str):
-    raise Exception('Source must be a string')
+    raise Exception(f'bindings must be a list, was {bindings}')
+  if not isinstance(source, Value):
+    raise Exception(f'source must be a Value, was {source}')
+  if not isinstance(source.value, str):
+    raise Exception(f'source must be a string, was {type(source)}')
   
-  def get_value(name):
+  def get_value(sexpr: Sexpr):
     nonlocal env
-    env, result = seval(env, name)
+    env, result = seval(env, sexpr)
     return result
   
-  py_globals = {name: get_value(name) for name in bindings}
+  py_globals: dict[str, Any] = {assert_symbol(sexpr).value: get_value(sexpr) for sexpr in assert_pair(bindings)}
   py_globals["_env"] = env
-  py_result = eval(source, py_globals)
+  py_result = eval(source.value, py_globals)
   return env, py_result
-
-def seval_args(fn):
-  def bound(env, *args):
-    new_args = []
-    for arg in args:
-      env, evaled = seval(env, arg)
-      new_args.append(evaled)
-    return fn(env, *new_args)
-  return bound
 
 def abort_fn(_):
   raise Exception('Aborted!')
 
-builtin_func_table = {
+builtin_env = Env.from_functions({
   'abort': abort_fn,
   'python': python_fn,
   'load': load_fn,
-  'quote': quote_fn,
-  'car': car,
-  'cdr': cdr,
-  'cons': cons,
-  'cond': cond,
+  'car': car_fn,
+  'cdr': cdr_fn,
+  'cons': cons_fn,
   'define': define_fn,
-  'lambda': lambda_fn,
   'atom?': atom_fn,
   'null?': null_fn,
   'eq?': eq_fn,
   'or': or_fn,
-  '+': seval_args(lambda env, a, b: (env, a + b)),
-  '-': seval_args(lambda env, a, b: (env, a - b)),
-  '*': seval_args(lambda env, a, b: (env, a * b)),
-  '/': seval_args(lambda env, a, b: (env, a / b)),
-  'add1': seval_args(lambda env, a: (env, a + 1)),
-  'sub1': seval_args(lambda env, a: (env, a - 1)),
-  'zero?': seval_args(lambda env, a: (env, TRUE if a == 0 else FALSE)),
-}
+  '+': lambda env, a, b: (env, a + b),
+  '-': lambda env, a, b: (env, a - b),
+  '*': lambda env, a, b: (env, a * b),
+  '/': lambda env, a, b: (env, a / b),
+  'add1': lambda env, a: (env, a + 1),
+  'sub1': lambda env, a: (env, a - 1),
+  'zero?': lambda env, a: (env, TRUE if a == 0 else FALSE),
+})
 
-def parse(src):
+def parse(src: Iterable[str]) -> Pair:
   MODE_NORMAL = 'normal'
   MODE_STRING = 'string'
   MODE_ESCAPE = 'escape'
@@ -203,25 +288,29 @@ def parse(src):
   }
 
   depth = 0
-  buffer = []
-  escape = []
-  sexprs = []
+  buffer: list[str] = []
+  escape: list[str] = []
+  sexpr = Pair()
   mode = MODE_NORMAL
 
-  def flush_buffer(string=False):
+  def flush_buffer(string: bool=False):
+    nonlocal sexpr
     if len(buffer) > 0:
-      if not string and buffer[0] == '(':
-        result = parse(buffer[1:-1])
+      if string:
+        result = Value(''.join(buffer))
       else:
-        result = ''.join(buffer)
-        try:
-          result = int(result)
-        except:
+        if buffer[0] == '(':
+          result = parse(buffer[1:-1])
+        else:
+          s = ''.join(buffer)
           try:
-            result = float(result)
+            result = Value(int(s))
           except:
-            pass
-      sexprs.append(result)
+            try:
+              result = Value(float(s))
+            except:
+              result = Symbol(s)
+      sexpr = cons(result, sexpr)
       buffer.clear()
 
   for c in src:
@@ -263,63 +352,80 @@ def parse(src):
       else:
         escape.append(c)
 
-
   if depth > 0:
     raise UnmatchedParenthesesError('Unmatched parenthesis: missing )', depth=depth)
 
   flush_buffer()
 
-  return sexprs
+  return reverse(sexpr)
 
-def stringify(env, sexpr):
+def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
   if sexpr is None:
     return 'None'
-  if hasattr(sexpr, '_sexpr'):
-    return stringify(env, sexpr._sexpr)
-  if callable(sexpr):
-    return f'<builtin:{sexpr.__name__}>'
-  if is_list(sexpr):
-    return f'({" ".join(stringify(env, x) for x in sexpr)})'
-  return str(sexpr)
+  return sexpr.external()
 
-def stringify_callstack(callstack):
-  lines = []
+def stringify_callstack(callstack: list[Tuple[Env, Sexpr]]) -> str:
+  lines: list[str] = []
   for i, [env, sexpr] in enumerate(callstack):
     lines.append(f"{i}: {stringify(env, sexpr)}")
   return '\n'.join(lines)
 
-def seval_list(env, sexprs):
-  if len(sexprs) > 0:
-    env, func = seval(env, sexprs[0])
-    if callable(func):
-      args = sexprs[1:]
-      env, result = func(env, *args)
-      return env, result
-  return env, sexprs
-
-def seval(env, sexpr):
+def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
   with env.log_call(sexpr) as env:
-    sexpr = env.resolve(sexpr)
-    if is_list(sexpr):
-      return seval_list(env, sexpr)
+    if isinstance(sexpr, Symbol):
+      sexpr = env.resolve(sexpr)
+    if isinstance(sexpr, Pair):
+      first = car(sexpr)
+      if first is None:
+        raise Exception('first list element was None')
+      if isinstance(first, Symbol):
+        first = env.resolve(first)
+      if Symbol('quote') == first:
+        args = cdr(sexpr)
+        if args is None:
+          raise Exception('quote requires an argument')
+        return env, args
+      if Symbol('cond') == first:
+        raise NotImplemented('cond not implemented')
+      if isinstance(first, NativeFunction):
+        args = assert_pair(cdr(sexpr))
+        evaled_args: list[Sexpr] = []
+        temp_env = env.copy()
+        for arg in args:
+          temp_env, result = seval(temp_env, arg)
+          evaled_args.append(result)
+        return first.fn(env, *evaled_args)
+      if is_lambda(first):
+        if not isinstance(first, Pair):
+          raise Exception('invariant violation: lambda is not Pair')
+        args = assert_pair(cdr(sexpr))
+        params = assert_pair(first[1])
+        body = first[2]
+        lambda_env = env.copy()
+        for param, arg in zip(params, args):
+          if not isinstance(param, Symbol):
+            raise Exception(f'lambda param {param} is not a symbol')
+          lambda_env, arg = seval(lambda_env, arg)
+          lambda_env.define(param, arg)
+        return env, seval(lambda_env, body)[1]
     return env, sexpr
 
-def seval_multiple(env, sexprs):
+def seval_multiple(env: Env, sexprs: Pair) -> Tuple[Env, Pair]:
   with env.log_call(sexprs) as env:
-    results = []
+    results = Pair()
     for sexpr in sexprs:
       env, result = seval(env, sexpr)
-      results.append(result)
-    return env, results
+      results = cons(result, results)
+    return env, reverse(results)
 
-def run(src, env=None):
-  env = env or Env(names=builtin_func_table.copy())
+def run(src: Iterable[str], env: Optional[Env]=None):
+  env = env or builtin_env.copy()
   parsed = parse(src)
   env, results = seval_multiple(env, parsed)
   return env, results
 
 def main():
-  env = Env(names=builtin_func_table.copy())
+  env = builtin_env.copy()
   input_buffer = ''
   input_depth = 0
 
@@ -339,15 +445,18 @@ def main():
           input_depth = e.depth
         else:
           raise e
+    except EvalError as e:
+      print(f"Error: {e}")
+      print(stringify_callstack(e.callstack))
+      print()
+      input_buffer = ''
+      input_depth = 0
     except Exception as e:
-      if hasattr(e, '_callstack'):
-        print(f"Error: {e}")
-        print(stringify_callstack(e._callstack))
-      else:
-        traceback.print_exc()
+      traceback.print_exc()
       print()
       input_buffer = ''
       input_depth = 0
 
 if __name__ == '__main__':
+  run('(cons a (b c))')
   main()
