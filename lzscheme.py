@@ -416,7 +416,10 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
         args = cdr(sexpr)
         if args is None:
           raise Exception('quote requires an argument')
-        return env, args
+        args = assert_pair(args)
+        if len(args) != 1:
+          raise Exception('quote requires exactly one argument')
+        return env, args[0]
       if Symbol('cond') == first:
         args = assert_pair(cdr(sexpr))
         for arg in args:
