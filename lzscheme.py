@@ -1,6 +1,5 @@
 from sys import stdin
 from contextlib import contextmanager
-from textwrap import indent
 from typing import Union, Optional, Callable, Any, Iterable, Tuple
 import traceback
 
@@ -18,6 +17,9 @@ class Symbol:
   
   def __repr__(self) -> str:
     return f'Symbol("{self.value}")'
+  
+  def __str__(self) -> str:
+    return self.external()
   
   def __hash__(self) -> int:
     return hash(self.value)
@@ -39,6 +41,9 @@ class Value:
   def __repr__(self) -> str:
     return f'Value({repr(self.value)})'
 
+  def __str__(self) -> str:
+    return self.external()
+
   def __eq__(self, o: object) -> bool:
     if not isinstance(o, Value):
       return False
@@ -58,6 +63,9 @@ class NativeFunction:
   def __repr__(self) -> str:
     return f'NativeFunction({self.fn.__name__})'
 
+  def __str__(self) -> str:
+    return self.external()
+
   def external(self) -> str:
     return f'<builtin:{self.fn.__name__}>'
 
@@ -71,6 +79,9 @@ class Pair:
   
   def __repr__(self) -> str:
     return f'Pair({repr(self.car), repr(self.cdr)})'
+
+  def __str__(self) -> str:
+    return self.external()
 
   def __eq__(self, o: object) -> bool:
     if not isinstance(o, Pair):
@@ -120,6 +131,7 @@ class Env:
   def __init__(self, *, names: dict[Symbol, Sexpr]={}, callstack: list[Tuple['Env', Sexpr]]=[], parent: Optional['Env'] = None):
     self.names = names
     self.callstack = callstack
+    self.parent = parent
 
   def copy(self):
     return Env(names={}, callstack=self.callstack, parent=self)
@@ -396,19 +408,27 @@ def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
     return 'None'
   return sexpr.external()
 
-def stringify_bindings(env: Env):
-  lines = [f'{name.value}: {stringify(env, value)}' 
-    for name, value in env.names.items() 
-    if not isinstance(value, NativeFunction) and not is_lambda(value)]
-  return '\n'.join(lines)
+def stringify_bindings(env: Env, *, include_lambdas: bool) -> list[str]:
+  names = [name.value for name in env.names.keys()]
+  if len(names):
+    longest_name_len = max(len(name) for name in names)
+    lines = [f'{name.value:>{longest_name_len}}: {stringify(env, value)}' 
+      for name, value in env.names.items()
+      if not is_lambda(value) or include_lambdas]
+    return lines
+  return []
 
-def stringify_callstack(callstack: list[Tuple[Env, Sexpr]], *, include_bindings: bool=False) -> str:
+def stringify_callstack(callstack: list[Tuple[Env, Sexpr]], *, include_bindings: bool=False, include_lambdas: bool=False) -> str:
   lines: list[str] = []
+  base_indent = len(str(len(callstack)))
   for i, [env, sexpr] in enumerate(callstack):
-    lines.append(f"{i: >4}. {stringify(env, sexpr)}")
     if include_bindings:
-      lines.append(indent(stringify_bindings(env), ' ' * 6))
-      lines.append('')
+      bindings_lines = [' ' * (2 + base_indent) + x for x in stringify_bindings(env, include_lambdas=include_lambdas)]
+      if len(bindings_lines):
+        lines.append('')
+        lines += bindings_lines
+        lines.append('')
+    lines.append(f"{i: >{base_indent}}. {stringify(env, sexpr)}")
   return '\n'.join(lines)
 
 def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
@@ -504,7 +524,7 @@ def main():
         else:
           raise e
     except EvalError as e:
-      print(stringify_callstack(e.callstack, include_bindings=False))
+      print(stringify_callstack(e.callstack, include_bindings=True, include_lambdas=False))
       print(f"Error: {e}")
       print('  Traceback shown above.')
       print()
