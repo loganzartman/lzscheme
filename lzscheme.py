@@ -115,21 +115,26 @@ class EvalError(RuntimeError):
 class Env:
   names: dict[Symbol, Sexpr]
   callstack: list[Tuple['Env', Sexpr]]
+  parent: Optional['Env']
 
-  def __init__(self, *, names: dict[Symbol, Sexpr]={}, callstack: list[Tuple['Env', Sexpr]]=[]):
+  def __init__(self, *, names: dict[Symbol, Sexpr]={}, callstack: list[Tuple['Env', Sexpr]]=[], parent: Optional['Env'] = None):
     self.names = names
     self.callstack = callstack
 
   def copy(self):
-    return Env(names=self.names.copy(), callstack=self.callstack)
+    return Env(names={}, callstack=self.callstack, parent=self)
 
   def define(self, symbol: Symbol, value: Sexpr):
     self.names[symbol] = value
     return self
 
   def resolve(self, sexpr: Sexpr) -> Sexpr:
-    if isinstance(sexpr, Symbol) and sexpr in self.names:
-      return self.names[sexpr]
+    if isinstance(sexpr, Symbol):
+      env = self
+      while env is not None:
+        if sexpr in env.names:
+          return env.names[sexpr]
+        env = env.parent
     return sexpr
   
   @contextmanager
@@ -244,7 +249,7 @@ def define_fn(env: Env, name: Sexpr, sexpr: Sexpr):
   if not isinstance(name, Symbol):
     raise Exception(f'name must be Symbol, was {name}')
 
-  return env.copy().define(name, sexpr), None
+  return env.define(name, sexpr), None
 
 def or_fn(env: Env, a: Sexpr, b: Sexpr):
   if is_truthy(a):
