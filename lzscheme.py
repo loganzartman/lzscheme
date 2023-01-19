@@ -176,6 +176,11 @@ def assert_symbol(x: Optional[Sexpr]) -> Symbol:
     raise Exception(f'{x} must be a Symbol')
   return x
 
+def assert_not_none(x: Optional[Sexpr]) -> Sexpr:
+  if x is None:
+    raise Exception(f'expression did not evaluate to any value')
+  return x
+
 def car(pair: Pair):
   if is_null(pair):
     raise Exception('pair is null so it has no car')
@@ -257,12 +262,6 @@ def load_fn(env: Env, path: Sexpr):
     env, result = run(f.read(), env)
     return env, result
 
-def define_fn(env: Env, name: Sexpr, sexpr: Sexpr):
-  if not isinstance(name, Symbol):
-    raise Exception(f'name must be Symbol, was {name}')
-
-  return env.define(name, sexpr), None
-
 def or_fn(env: Env, a: Sexpr, b: Sexpr):
   if is_truthy(a):
     return env, a
@@ -299,7 +298,6 @@ builtin_env = Env.from_functions({
   'car': car_fn,
   'cdr': cdr_fn,
   'cons': cons_fn,
-  'define': define_fn,
   'atom?': atom_fn,
   'null?': null_fn,
   'eq?': eq_fn,
@@ -431,7 +429,7 @@ def stringify_callstack(callstack: list[Tuple[Env, Sexpr]], *, include_bindings:
     lines.append(f"{i: >{base_indent}}. {stringify(env, sexpr)}")
   return '\n'.join(lines)
 
-def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
+def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Optional[Sexpr]]:
   with env.log_call(sexpr) as env:
     if isinstance(sexpr, Symbol):
       sexpr = env.resolve(sexpr)
@@ -457,7 +455,7 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
           if predicate is None:
             raise Exception(f'missing predicate in cond clause: {arg}')
           env, predicate_result = seval(env, predicate)
-          if is_truthy(predicate_result) or Symbol('else') == predicate_result:
+          if is_truthy(assert_not_none(predicate_result)) or Symbol('else') == predicate_result:
             expressions = assert_pair(cdr(arg))
             result = None
             for expression in expressions:
@@ -465,13 +463,17 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
             if result is None:
               raise Exception(f'no expressions in cond clause: {arg}')
             return env, result
+      if Symbol('define') == first:
+        name, value = assert_pair(cdr(sexpr))
+        env.define(assert_symbol(name), value)
+        return env, None
       if isinstance(first, NativeFunction):
         args = assert_pair(cdr(sexpr))
         evaled_args: list[Sexpr] = []
         temp_env = env.copy()
         for arg in args:
           temp_env, result = seval(temp_env, arg)
-          evaled_args.append(result)
+          evaled_args.append(assert_not_none(result))
         return first.fn(env, *evaled_args)
       if is_lambda(first):
         if not isinstance(first, Pair):
@@ -484,7 +486,7 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Sexpr]:
           if not isinstance(param, Symbol):
             raise Exception(f'lambda param {param} is not a symbol')
           lambda_env, arg = seval(lambda_env, arg)
-          lambda_env.define(param, arg)
+          lambda_env.define(param, assert_not_none(arg))
         return env, seval(lambda_env, body)[1]
     return env, sexpr
 
@@ -493,7 +495,8 @@ def seval_multiple(env: Env, sexprs: Pair) -> Tuple[Env, Pair]:
     results = Pair()
     for sexpr in sexprs:
       env, result = seval(env, sexpr)
-      results = cons(result, results)
+      if result is not None:
+        results = cons(result, results)
     return env, reverse(results)
 
 def run(src: Iterable[str], env: Optional[Env]=None):
