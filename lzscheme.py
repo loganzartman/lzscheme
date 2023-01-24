@@ -346,25 +346,28 @@ def parse(src: Iterable[str]) -> Pair:
 
   def flush_buffer(string: bool=False):
     nonlocal sexpr
-    if len(buffer) > 0:
-      if string:
-        result = Value(''.join(buffer))
+    result = None
+      
+    if string:
+      result = Value(''.join(buffer))
+    elif len(buffer) > 0:
+      s = ''.join(buffer)
+      if buffer[0] == '(':
+        result = parse(buffer[1:-1])
+      elif s == '#t':
+        result = Value(True)
+      elif s == '#f':
+        result = Value(False)
       else:
-        s = ''.join(buffer)
-        if buffer[0] == '(':
-          result = parse(buffer[1:-1])
-        elif s == '#t':
-          result = Value(True)
-        elif s == '#f':
-          result = Value(False)
-        else:
+        try:
+          result = Value(int(s))
+        except:
           try:
-            result = Value(int(s))
+            result = Value(float(s))
           except:
-            try:
-              result = Value(float(s))
-            except:
-              result = Symbol(s)
+            result = Symbol(s)
+    
+    if result is not None:
       sexpr = cons(result, sexpr)
       buffer.clear()
 

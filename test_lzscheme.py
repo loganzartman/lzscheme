@@ -41,6 +41,9 @@ def test_parse_string():
   assert parse('(a "b" c)') == [['a', 'b', 'c']]
   assert parse('("apples" ("bananas" "and" "citrus"))') == [['apples', ['bananas', 'and', 'citrus']]]
 
+def test_parse_string_empty():
+  assert parse('""') == ['']
+
 def test_parse_simple_escapes():
   assert parse(r'"string\"s"') == ['string"s']
   assert parse(r'"tab\ttab\ttab"') == ['tab\ttab\ttab']
