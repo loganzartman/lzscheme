@@ -199,6 +199,9 @@ def is_atom(x: Sexpr) -> bool:
 
 def is_list(x: Sexpr) -> bool:
   return isinstance(x, Pair)
+
+def is_sexpr(x: Any) -> bool:
+  return is_atom(x) or is_list(x)
   
 def is_null(x: Sexpr) -> bool:
   return x.car is None if isinstance(x, Pair) else False
@@ -222,7 +225,7 @@ def numeric_value(x: Sexpr) -> Union[int, float]:
   if not isinstance(x, Value):
     raise Exception(f'argument must be Value, was {x}')
   if not isinstance(x.value, int) and not isinstance(x.value, float):
-    raise Exception(f'argument must have a numeric value, was {type(x)}')
+    raise Exception(f'argument must have a numeric value, was {type(x.value)}')
   return x.value
 
 def reverse(p: Pair) -> Pair:
@@ -285,7 +288,17 @@ def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
   
   py_globals: dict[str, Any] = {assert_symbol(sexpr).value: get_value(sexpr) for sexpr in assert_pair(bindings)}
   py_globals["_env"] = env
+  py_globals["Symbol"] = Symbol
+  py_globals["Value"] = Value
+  py_globals["NativeFunction"] = NativeFunction
+  py_globals["Pair"] = Pair
+  py_globals["Env"] = Env
+
   py_result = eval(string_value(source), py_globals)
+
+  if not is_sexpr(py_result):
+    py_result = Value(py_result)
+
   return env, py_result
 
 def abort_fn(_):
