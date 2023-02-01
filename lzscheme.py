@@ -373,20 +373,25 @@ def parse_string(src: str) -> str:
   value = re.sub(pattern_other_escape, lambda match: escape_table[match[1]] if match[1] in escape_table else match[1], value)
   return value
 
-def parse_tokens(src: Iterable[Token]) -> Pair:
-  stack: list[Pair] = [Pair()]
+def parse_tokens(src: Iterable[Token]) -> Sexpr:
+  stack: list[Sexpr] = []
   for name, value in src:
     if name == 'whitespace':
       pass
     elif name == 'comment':
       pass
     elif name == 'open':
-      stack.append(Pair())
+      stack.append(Symbol('('))
     elif name == 'close':
-      if len(stack) < 2:
-        raise UnmatchedParenthesesError('Umatched closing parenthesis', depth=0)
-      top = stack.pop()
-      stack[-1] = cons(reverse(top), stack[-1])
+      result = Pair()
+
+      while Symbol('(') != stack[-1]:
+        result = cons(stack.pop(), result)
+        if not len(stack):
+          raise UnmatchedParenthesesError('Umatched closing parenthesis', depth=0)
+      stack.pop()
+
+      stack.append(result)
     elif name == 'literal':
       if value == TRUE:
         result = Value(True)
@@ -400,19 +405,18 @@ def parse_tokens(src: Iterable[Token]) -> Pair:
             result = Value(float(value))
           except:
             result = Symbol(value)
-      stack[-1] = cons(result, stack[-1])
+      stack.append(result)
     elif name == 'string':
-      result = parse_string(value)
-      stack[-1] = cons(Value(result), stack[-1])
+      stack.append(Value(parse_string(value)))
     else:
       raise Exception(f'unsupported token type: {name}')
   
   if len(stack) > 1:
     raise UnmatchedParenthesesError('Unmatched opening parenthesis', depth=len(stack) - 1)
 
-  return reverse(stack[0])
+  return stack[0]
 
-def parse(src: Iterable[str]) -> Pair:
+def parse(src: Iterable[str]) -> Sexpr:
   return parse_tokens(tokenize(src))
 
 def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
