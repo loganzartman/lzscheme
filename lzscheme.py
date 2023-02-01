@@ -1,4 +1,7 @@
+import re
+from re import Match
 from sys import stdin
+from collections import deque
 from contextlib import contextmanager
 from typing import Union, Optional, Callable, Any, Iterable, Tuple
 import traceback
@@ -325,6 +328,52 @@ builtin_env = Env.from_functions({
   'zero?': lambda env, a: (env, Value(numeric_value(a) == 0)),
 })
 
+pattern_open = r'[(\[{]'
+pattern_close = r'[)\]}]'
+pattern_literal = r'[^"\s()\[\]{}]+'
+pattern_string = r'"(?:\\"|[^"])*"'
+pattern_tokenize = f'^\\s*({pattern_open}|{pattern_close}|{pattern_string}|{pattern_literal})$'
+
+def tokenize(src: Iterable[str]) -> Iterable[str]:
+  buffer: deque[str] = deque()
+  i = iter(src)
+
+  eof = False
+  def read_more():
+    nonlocal eof
+    c = next(i, None)
+    if c is None:
+      eof = True
+      return False
+    else:
+      buffer.append(c)
+      return True
+  
+  # while there is buffered text or unread text
+  while len(buffer) or not eof:
+    # read until there is a match
+    match = None
+    while True:
+      match = re.fullmatch(pattern_tokenize, ''.join(buffer))
+      if match:
+        break
+      if not read_more():
+        raise Exception(f'Unmatchable input: {"".join(buffer)}')
+    
+    # expand the match as far as possible
+    while True:
+      longer_match = re.fullmatch(pattern_tokenize, ''.join(buffer))
+      if not longer_match:
+        break
+      match = longer_match
+      if not read_more():
+        break
+    
+    assert match is not None
+    yield match[1]
+    for _ in range(len(match[0])):
+      buffer.popleft()
+  
 def parse(src: Iterable[str]) -> Pair:
   MODE_NORMAL = 'normal'
   MODE_STRING = 'string'
