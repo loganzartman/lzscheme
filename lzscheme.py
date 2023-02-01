@@ -236,6 +236,12 @@ def reverse(p: Pair) -> Pair:
     result = cons(elem, result)
   return result
 
+def build_list(l: list[Sexpr]) -> Pair:
+  result = Pair()
+  for x in l:
+    result = cons(x, result)
+  return reverse(result)
+
 def is_eq(a: Sexpr, b: Sexpr):
   if not is_atom(a):  
     raise Exception(f'Argument {a} is not an atom')
@@ -373,7 +379,7 @@ def parse_string(src: str) -> str:
   value = re.sub(pattern_other_escape, lambda match: escape_table[match[1]] if match[1] in escape_table else match[1], value)
   return value
 
-def parse_tokens(src: Iterable[Token]) -> Sexpr:
+def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
   stack: list[Sexpr] = []
   for name, value in src:
     if name == 'whitespace':
@@ -411,12 +417,23 @@ def parse_tokens(src: Iterable[Token]) -> Sexpr:
     else:
       raise Exception(f'unsupported token type: {name}')
   
+  # raise if any open parens remain
+  depth = 0
+  for sexpr in stack:
+    if Symbol('(') == sexpr:
+      depth += 1
+  if depth > 0:
+    raise UnmatchedParenthesesError('Unmatched opening parenthesis', depth=depth)
+
   if len(stack) > 1:
-    raise UnmatchedParenthesesError('Unmatched opening parenthesis', depth=len(stack) - 1)
+    # convert multiple bare sexprs into a begin block
+    return Pair(Symbol('begin'), build_list(stack))
+  elif len(stack):
+    return stack[0]
+  else:
+    return None
 
-  return stack[0]
-
-def parse(src: Iterable[str]) -> Sexpr:
+def parse(src: Iterable[str]) -> Optional[Sexpr]:
   return parse_tokens(tokenize(src))
 
 def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
@@ -447,7 +464,10 @@ def stringify_callstack(callstack: list[Tuple[Env, Sexpr]], *, include_bindings:
     lines.append(f"{i: >{base_indent}}. {stringify(env, sexpr)}")
   return '\n'.join(lines)
 
-def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Optional[Sexpr]]:
+def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
+  if sexpr is None:
+    return env, None
+
   with env.log_call(sexpr) as env:
     if isinstance(sexpr, Symbol):
       sexpr = env.resolve(sexpr)
@@ -485,6 +505,12 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Optional[Sexpr]]:
         name, value = assert_pair(cdr(sexpr))
         env.define(assert_symbol(name), value)
         return env, None
+      if Symbol('begin') == first:
+        expressions = assert_pair(cdr(sexpr))
+        result = None
+        for expression in expressions:
+          env, result = seval(env, expression)
+        return env, result
       if isinstance(first, NativeFunction):
         args = assert_pair(cdr(sexpr))
         evaled_args: list[Sexpr] = []
@@ -508,19 +534,10 @@ def seval(env: Env, sexpr: Sexpr) -> Tuple[Env, Optional[Sexpr]]:
         return env, seval(lambda_env, body)[1]
     return env, sexpr
 
-def seval_multiple(env: Env, sexprs: Pair) -> Tuple[Env, Pair]:
-  with env.log_call(sexprs) as env:
-    results = Pair()
-    for sexpr in sexprs:
-      env, result = seval(env, sexpr)
-      if result is not None:
-        results = cons(result, results)
-    return env, reverse(results)
-
 def run(src: Iterable[str], env: Optional[Env]=None):
   env = env or builtin_env.copy()
   parsed = parse(src)
-  env, results = seval_multiple(env, parsed)
+  env, results = seval(env, parsed)
   return env, results
 
 def main():
@@ -534,8 +551,9 @@ def main():
     input_buffer += stdin.readline()
     try:
       try:
-        env, results = run(input_buffer, env)
-        print(' '.join(stringify(env, result) for result in results))
+        env, result = run(input_buffer, env)
+        if result is not None:
+          print(stringify(env, result))
         print()
         input_buffer = ''
         input_depth = 0
