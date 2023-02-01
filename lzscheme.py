@@ -537,8 +537,8 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
 def run(src: Iterable[str], env: Optional[Env]=None):
   env = env or builtin_env.copy()
   parsed = parse(src)
-  env, results = seval(env, parsed)
-  return env, results
+  env, result = seval(env, parsed)
+  return env, result
 
 def main():
   env = builtin_env.copy()
