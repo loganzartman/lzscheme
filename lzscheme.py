@@ -238,9 +238,9 @@ def reverse(p: Pair) -> Pair:
 
 def build_list(l: list[Sexpr]) -> Pair:
   result = Pair()
-  for x in l:
+  for x in reversed(l):
     result = cons(x, result)
-  return reverse(result)
+  return result
 
 def is_eq(a: Sexpr, b: Sexpr):
   if not is_atom(a):  
@@ -324,6 +324,7 @@ builtin_env = Env.from_functions({
   'eq?': eq_fn,
   'or': or_fn,
   # 'and': and_fn,
+  'list': lambda env, *items: (env, build_list(items)),
   '+': lambda env, a, b: (env, Value(numeric_value(a) + numeric_value(b))),
   '-': lambda env, a, b: (env, Value(numeric_value(a) - numeric_value(b))),
   '*': lambda env, a, b: (env, Value(numeric_value(a) * numeric_value(b))),
@@ -339,8 +340,11 @@ token_patterns: OrderedDict[str, str] = OrderedDict([
   ('open', r'[(\[{]'),
   ('close', r'[)\]}]'),
   ('quote', r"'"),
+  ('quasiquote', r'`'),
+  ('unquote', r','),
+  ('unquote-splicing', r',@'),
   ('string', r'"(?:\\"|[^"])*"'),
-  ('literal', r'''[^"'\s()\[\]{}]+'''),
+  ('literal', r'''[^"'`,@\s()\[\]{}]+'''),
 ])
 
 Token = tuple[str, str]
@@ -385,6 +389,12 @@ def parse_apply_quotes(stack: list[Sexpr]):
   while len(stack):
     if Symbol("'") == stack[-1]:
       top = Pair(Symbol('quote'), Pair(top))
+    elif Symbol("`") == stack[-1]:
+      top = Pair(Symbol('quasiquote'), Pair(top))
+    elif Symbol(",") == stack[-1]:
+      top = Pair(Symbol('unquote'), Pair(top))
+    elif Symbol(",@") == stack[-1]:
+      top = Pair(Symbol('unquote-splicing'), Pair(top))
     else:
       break
     stack.pop()
@@ -397,8 +407,8 @@ def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
       pass
     elif name == 'comment':
       pass
-    elif name == 'quote':
-      stack.append(Symbol("'"))
+    elif name in {'quote', 'quasiquote', 'unquote', 'unquote-splicing'}:
+      stack.append(Symbol(value)) 
     elif name == 'open':
       stack.append(Symbol('('))
     elif name == 'close':
