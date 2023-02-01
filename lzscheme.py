@@ -1,7 +1,6 @@
 import re
-from re import Match
 from sys import stdin
-from collections import deque
+from collections import OrderedDict
 from contextlib import contextmanager
 from typing import Union, Optional, Callable, Any, Iterable, Tuple
 import traceback
@@ -328,14 +327,14 @@ builtin_env = Env.from_functions({
   'zero?': lambda env, a: (env, Value(numeric_value(a) == 0)),
 })
 
-token_patterns: list[tuple[str, str]] = [
+token_patterns: OrderedDict[str, str] = OrderedDict([
   ('whitespace', r'[\s\r\n]*'),
   ('comment', r';[^\r\n]*(?:\r\n|\r|\n)'),
   ('open', r'[(\[{]'),
   ('close', r'[)\]}]'),
   ('string', r'"(?:\\"|[^"])*"'),
   ('literal', r'[^"\s()\[\]{}]+'),
-]
+])
 
 Token = tuple[str, str]
 
@@ -345,7 +344,7 @@ def tokenize(src: Iterable[str]) -> Iterable[Token]:
   while len(src):
     longest_match_name = None
     longest_match = None
-    for name, pattern in token_patterns:
+    for name, pattern in token_patterns.items():
       match = re.match(pattern, src)
       if match is not None:
         if longest_match is None or len(match[0]) > len(longest_match[0]):
@@ -358,98 +357,63 @@ def tokenize(src: Iterable[str]) -> Iterable[Token]:
     yield (longest_match_name, longest_match[0])
 
     src = src[len(longest_match[0]):]
-  
-def parse(src: Iterable[str]) -> Pair:
-  MODE_NORMAL = 'normal'
-  MODE_STRING = 'string'
-  MODE_ESCAPE = 'escape'
-  MODE_ESCAPE_HEX = 'escape_hex'
-  SIMPLE_ESCAPES = {
-    '"': '"',
-    '\\': '\\',
-    't': '\t',
-    'r': '\r',
-    'n': '\n',
-  }
 
-  depth = 0
-  buffer: list[str] = []
-  escape: list[str] = []
-  sexpr = Pair()
-  mode = MODE_NORMAL
+pattern_hex_escape = re.compile(r'\\x([a-eA-E0-9]+);')
+pattern_other_escape = re.compile(r'\\(\S)')
+escape_table = {
+  '"': '"',
+  '\\': '\\',
+  't': '\t',
+  'r': '\r',
+  'n': '\n',
+}
+def parse_string(src: str) -> str:
+  value = src[1:-1]
+  value = re.sub(pattern_hex_escape, lambda match: chr(int(match[1], 16)), value)
+  value = re.sub(pattern_other_escape, lambda match: escape_table[match[1]] if match[1] in escape_table else match[1], value)
+  return value
 
-  def flush_buffer(string: bool=False):
-    nonlocal sexpr
-    result = None
-      
-    if string:
-      result = Value(''.join(buffer))
-    elif len(buffer) > 0:
-      s = ''.join(buffer)
-      if buffer[0] == '(':
-        result = parse(buffer[1:-1])
-      elif s == '#t':
+def parse_tokens(src: Iterable[Token]) -> Pair:
+  stack: list[Pair] = [Pair()]
+  for name, value in src:
+    if name == 'whitespace':
+      pass
+    elif name == 'comment':
+      pass
+    elif name == 'open':
+      stack.append(Pair())
+    elif name == 'close':
+      if len(stack) < 2:
+        raise UnmatchedParenthesesError('Umatched closing parenthesis', depth=0)
+      top = stack.pop()
+      stack[-1] = cons(reverse(top), stack[-1])
+    elif name == 'literal':
+      if value == TRUE:
         result = Value(True)
-      elif s == '#f':
+      elif value == FALSE:
         result = Value(False)
       else:
         try:
-          result = Value(int(s))
+          result = Value(int(value))
         except:
           try:
-            result = Value(float(s))
+            result = Value(float(value))
           except:
-            result = Symbol(s)
-    
-    if result is not None:
-      sexpr = cons(result, sexpr)
-      buffer.clear()
+            result = Symbol(value)
+      stack[-1] = cons(result, stack[-1])
+    elif name == 'string':
+      result = parse_string(value)
+      stack[-1] = cons(Value(result), stack[-1])
+    else:
+      raise Exception(f'unsupported token type: {name}')
+  
+  if len(stack) > 1:
+    raise UnmatchedParenthesesError('Unmatched opening parenthesis', depth=len(stack) - 1)
 
-  for c in src:
-    if mode == MODE_NORMAL:
-      if depth == 0 and (c == ' ' or c == '\n'):
-        flush_buffer()
-      elif depth == 0 and c == '"':
-        mode = MODE_STRING
-      elif c == '(':
-        depth += 1
-        buffer.append(c)
-      elif c == ')':
-        if depth == 0:
-          raise UnmatchedParenthesesError('Unmatched parenthesis: missing (', depth=depth)
-        depth -= 1
-        buffer.append(c)
-      else:
-        buffer.append(c)
-    elif mode == MODE_STRING:
-      if c == '\\':
-        mode = MODE_ESCAPE
-      elif c == '"':
-        flush_buffer(string=True)
-        mode = MODE_NORMAL
-      else:
-        buffer.append(c)
-    elif mode == MODE_ESCAPE:
-      if c in SIMPLE_ESCAPES:
-        buffer.append(SIMPLE_ESCAPES[c])
-        mode = MODE_STRING
-      elif c == 'x':
-        mode = MODE_ESCAPE_HEX
-    elif mode == MODE_ESCAPE_HEX:
-      if c == ';':
-        escape_char = chr(int(''.join(escape), 16))
-        escape.clear()
-        buffer.append(escape_char)
-        mode = MODE_STRING
-      else:
-        escape.append(c)
+  return reverse(stack[0])
 
-  if depth > 0:
-    raise UnmatchedParenthesesError('Unmatched parenthesis: missing )', depth=depth)
-
-  flush_buffer()
-
-  return reverse(sexpr)
+def parse(src: Iterable[str]) -> Pair:
+  return parse_tokens(tokenize(src))
 
 def stringify(env: Env, sexpr: Optional[Sexpr]) -> str:
   if sexpr is None:
