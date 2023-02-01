@@ -328,51 +328,36 @@ builtin_env = Env.from_functions({
   'zero?': lambda env, a: (env, Value(numeric_value(a) == 0)),
 })
 
-pattern_open = r'[(\[{]'
-pattern_close = r'[)\]}]'
-pattern_literal = r'[^"\s()\[\]{}]+'
-pattern_string = r'"(?:\\"|[^"])*"'
-pattern_tokenize = f'^\\s*({pattern_open}|{pattern_close}|{pattern_string}|{pattern_literal})$'
+token_patterns: list[tuple[str, str]] = [
+  ('whitespace', r'[\s\r\n]*'),
+  ('comment', r';[^\r\n]*(?:\r\n|\r|\n)'),
+  ('open', r'[(\[{]'),
+  ('close', r'[)\]}]'),
+  ('string', r'"(?:\\"|[^"])*"'),
+  ('literal', r'[^"\s()\[\]{}]+'),
+]
 
-def tokenize(src: Iterable[str]) -> Iterable[str]:
-  buffer: deque[str] = deque()
-  i = iter(src)
+Token = tuple[str, str]
 
-  eof = False
-  def read_more():
-    nonlocal eof
-    c = next(i, None)
-    if c is None:
-      eof = True
-      return False
-    else:
-      buffer.append(c)
-      return True
-  
-  # while there is buffered text or unread text
-  while len(buffer) or not eof:
-    # read until there is a match
-    match = None
-    while True:
-      match = re.fullmatch(pattern_tokenize, ''.join(buffer))
-      if match:
-        break
-      if not read_more():
-        raise Exception(f'Unmatchable input: {"".join(buffer)}')
+def tokenize(src: Iterable[str]) -> Iterable[Token]:
+  src = ''.join(src)
+
+  while len(src):
+    longest_match_name = None
+    longest_match = None
+    for name, pattern in token_patterns:
+      match = re.match(pattern, src)
+      if match is not None:
+        if longest_match is None or len(match[0]) > len(longest_match[0]):
+          longest_match_name = name
+          longest_match = match
     
-    # expand the match as far as possible
-    while True:
-      longer_match = re.fullmatch(pattern_tokenize, ''.join(buffer))
-      if not longer_match:
-        break
-      match = longer_match
-      if not read_more():
-        break
-    
-    assert match is not None
-    yield match[1]
-    for _ in range(len(match[0])):
-      buffer.popleft()
+    if not longest_match:
+      raise Exception(f'cannot tokenize input: {src}')
+    assert longest_match_name is not None
+    yield (longest_match_name, longest_match[0])
+
+    src = src[len(longest_match[0]):]
   
 def parse(src: Iterable[str]) -> Pair:
   MODE_NORMAL = 'normal'
