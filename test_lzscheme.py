@@ -85,6 +85,12 @@ def test_eq_fn():
   assert run_results('(eq? atom atom)') == True
   assert run_results('(eq? atom banana)') == False
 
+def test_nested_call():
+  assert run_results('(car (cdr (a b c)))') == 'b'
+
+def test_nested_eval_without_call():
+  assert run_results('(a b (car (c d)))') == ['a', 'b', 'c']
+
 def test_argument_scoping():
   result = run_results('''
     (define test
