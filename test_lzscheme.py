@@ -58,6 +58,16 @@ def test_parse_numbers():
   assert parse('3.14159') == 3.14159
   assert parse('(a 14)') == ['a', 14]
 
+def test_parse_quote_atom():
+  assert parse("'a") == ['quote', 'a']
+
+def test_parse_quote_list():
+  assert parse("'(a b c)") == ['quote', ['a', 'b', 'c']]
+
+def test_parse_quote_nested():
+  assert parse("''a") == ['quote', ['quote', 'a']]
+  assert parse("'''(a b)") == ['quote', ['quote', ['quote', ['a', 'b']]]]
+
 def test_eval_atom():
   assert run_results('atom') == 'atom'
 

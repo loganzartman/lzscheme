@@ -338,8 +338,9 @@ token_patterns: OrderedDict[str, str] = OrderedDict([
   ('comment', r';[^\r\n]*(?:\r\n|\r|\n)'),
   ('open', r'[(\[{]'),
   ('close', r'[)\]}]'),
+  ('quote', r"'"),
   ('string', r'"(?:\\"|[^"])*"'),
-  ('literal', r'[^"\s()\[\]{}]+'),
+  ('literal', r'''[^"'\s()\[\]{}]+'''),
 ])
 
 Token = tuple[str, str]
@@ -379,6 +380,16 @@ def parse_string(src: str) -> str:
   value = re.sub(pattern_other_escape, lambda match: escape_table[match[1]] if match[1] in escape_table else match[1], value)
   return value
 
+def parse_apply_quotes(stack: list[Sexpr]):
+  top = stack.pop()
+  while len(stack):
+    if Symbol("'") == stack[-1]:
+      top = Pair(Symbol('quote'), Pair(top))
+    else:
+      break
+    stack.pop()
+  stack.append(top)
+
 def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
   stack: list[Sexpr] = []
   for name, value in src:
@@ -386,6 +397,8 @@ def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
       pass
     elif name == 'comment':
       pass
+    elif name == 'quote':
+      stack.append(Symbol("'"))
     elif name == 'open':
       stack.append(Symbol('('))
     elif name == 'close':
@@ -398,6 +411,7 @@ def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
       stack.pop()
 
       stack.append(result)
+      parse_apply_quotes(stack)
     elif name == 'literal':
       if value == TRUE:
         result = Value(True)
@@ -412,8 +426,10 @@ def parse_tokens(src: Iterable[Token]) -> Optional[Sexpr]:
           except:
             result = Symbol(value)
       stack.append(result)
+      parse_apply_quotes(stack)
     elif name == 'string':
       stack.append(Value(parse_string(value)))
+      parse_apply_quotes(stack)
     else:
       raise Exception(f'unsupported token type: {name}')
   
