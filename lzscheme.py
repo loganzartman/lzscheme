@@ -604,7 +604,7 @@ def run(src: Iterable[str], env: Optional[Env]=None):
   env, result = seval(env, parsed)
   return env, result
 
-def main():
+def repl():
   env = builtin_env.copy()
   input_buffer = ''
   input_depth = 0
@@ -638,6 +638,13 @@ def main():
       print()
       input_buffer = ''
       input_depth = 0
+
+def main():
+  if stdin.isatty():
+    repl()
+  else:
+    env, result = run(stdin.read())
+    print(stringify(env, result))
 
 if __name__ == '__main__':
   main()
