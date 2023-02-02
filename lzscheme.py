@@ -497,12 +497,16 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
   with env.log_call(sexpr) as env:
     if isinstance(sexpr, Symbol):
       sexpr = env.resolve(sexpr)
+
     if isinstance(sexpr, Pair) and not is_null(sexpr):
       first = car(sexpr)
+
       if first is None: # null list
         return env, sexpr
+
       if isinstance(first, Symbol):
         first = env.resolve(first)
+
       if Symbol('quote') == first:
         args = cdr(sexpr)
         if args is None:
@@ -511,6 +515,35 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
         if len(args) != 1:
           raise Exception('quote requires exactly one argument')
         return env, args[0]
+      
+      if Symbol('quasiquote') == first:
+        args = cdr(sexpr)
+        if args is None:
+          raise Exception('quasiquote requires an argument')
+        args = assert_pair(args)
+        if len(args) != 1:
+          raise Exception('quasiquote requires exactly one argument')
+        
+        def visit(env: Env, node: Sexpr) -> tuple[Env, Optional[Sexpr]]:
+          if is_list(node):
+            node = assert_pair(node)
+            first = car(node)
+            if Symbol('unquote') == first:
+              return seval(env, car(assert_pair(cdr(node))))
+            else:
+              result = Pair()
+              for item in node:
+                env, item_result = visit(env, item)
+                result = cons(assert_not_none(item_result), result)
+              return env, reverse(result)
+          else:
+            return env, node
+
+        return visit(env, args[0])
+      
+      if Symbol('unquote') == first:
+        raise Exception('unquote found outside of quasiquote')
+
       if Symbol('cond') == first:
         args = assert_pair(cdr(sexpr))
         for arg in args:
@@ -527,16 +560,19 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
             if result is None:
               raise Exception(f'no expressions in cond clause: {arg}')
             return env, result
+
       if Symbol('define') == first:
         name, value = assert_pair(cdr(sexpr))
         env.define(assert_symbol(name), value)
         return env, None
+
       if Symbol('begin') == first:
         expressions = assert_pair(cdr(sexpr))
         result = None
         for expression in expressions:
           env, result = seval(env, expression)
         return env, result
+
       if isinstance(first, NativeFunction):
         args = assert_pair(cdr(sexpr))
         evaled_args: list[Sexpr] = []
@@ -545,6 +581,7 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
           temp_env, result = seval(temp_env, arg)
           evaled_args.append(assert_not_none(result))
         return first.fn(env, *evaled_args)
+
       if is_lambda(first):
         if not isinstance(first, Pair):
           raise Exception('invariant violation: lambda is not Pair')
@@ -558,6 +595,7 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
           lambda_env, arg = seval(lambda_env, arg)
           lambda_env.define(param, assert_not_none(arg))
         return env, seval(lambda_env, body)[1]
+
     return env, sexpr
 
 def run(src: Iterable[str], env: Optional[Env]=None):
