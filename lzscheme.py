@@ -597,11 +597,23 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
         params = assert_pair(first[1])
         body = first[2]
         lambda_env = env.copy()
-        for param, arg in zip(params, args):
-          if not isinstance(param, Symbol):
-            raise Exception(f'lambda param {param} is not a symbol')
-          lambda_env, arg = seval(lambda_env, arg)
-          lambda_env.define(param, assert_not_none(arg))
+
+        args_iter = iter(args)
+        params_iter = iter(params)
+
+        for param in params_iter:
+          # varargs
+          if param == Symbol('.'):
+            param = next(params_iter, None)
+            if param is not None:
+              lambda_env.define(assert_symbol(param), build_list(list(args_iter)))
+            else:
+              raise Exception(f'Unexpected symbol after . in parameters: {param}')
+            break
+          # positional args
+          lambda_env, arg = seval(lambda_env, next(args_iter))
+          lambda_env.define(assert_symbol(param), assert_not_none(arg))
+
         return env, seval(lambda_env, body)[1]
 
     return env, sexpr

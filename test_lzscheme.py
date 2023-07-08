@@ -237,3 +237,10 @@ def test_traceback():
 
 def test_apply():
   assert run_results('(apply + (1 2))') == 3
+
+def test_varargs():
+  assert run_results('((lambda (. args) (list args)) 1 2 3)') == [[1, 2, 3]]
+  assert run_results('((lambda (a . rest) (list a rest)) 1 2 3)') == [1, [2, 3]]
+  assert run_results('((lambda (a b c . rest) (list a b c rest)) 1 2 3 4 5)') == [1, 2, 3, [4, 5]]
+  assert run_results('((lambda (. rest) (list rest)))') == [[]]
+  assert run_results('((lambda (a . rest) (list a rest)) 1)') == [1, []]
