@@ -505,8 +505,8 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
       if first is None: # null list
         return env, sexpr
 
-      if isinstance(first, Symbol):
-        first = env.resolve(first)
+      env, first = seval(env, first)
+      first = assert_not_none(first)
 
       if Symbol('quote') == first:
         args = cdr(sexpr)

@@ -116,6 +116,14 @@ def test_argument_scoping():
   assert str(result) != '1234'
   assert result == 'a'
 
+def test_higher_order_fn():
+  result = run_results('''
+    (define thunk
+      (lambda () (lambda () "hello")))
+    ((thunk))
+  ''')
+  assert result == 'hello'
+
 def test_lat():
   lat = '''
     (define lat?
