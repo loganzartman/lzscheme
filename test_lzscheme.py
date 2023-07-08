@@ -234,3 +234,6 @@ def test_traceback():
     assert '2' in lines[2]
   except:
     assert False
+
+def test_apply():
+  assert run_results('(apply + (1 2))') == 3
