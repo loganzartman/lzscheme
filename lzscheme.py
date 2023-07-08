@@ -299,15 +299,10 @@ def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
     env, result = seval(env, sexpr)
     return result
   
-  py_globals: dict[str, Any] = {assert_symbol(sexpr).value: get_value(sexpr) for sexpr in assert_pair(bindings)}
-  py_globals["_env"] = env
-  py_globals["Symbol"] = Symbol
-  py_globals["Value"] = Value
-  py_globals["NativeFunction"] = NativeFunction
-  py_globals["Pair"] = Pair
-  py_globals["Env"] = Env
+  bindings_map: dict[str, Any] = {assert_symbol(sexpr).value: get_value(sexpr) for sexpr in assert_pair(bindings)}
+  bindings_map["_env"] = env
 
-  py_result = eval(string_value(source), py_globals)
+  py_result = eval(string_value(source), {**globals(), **bindings_map})
 
   if not is_sexpr(py_result):
     py_result = Value(py_result)
