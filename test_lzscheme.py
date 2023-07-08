@@ -249,6 +249,9 @@ def test_traceback():
 def test_apply():
   assert run_results('(apply + (1 2))') == 3
 
+def test_apply_eval_args():
+  assert run_results('(apply (lambda (a b) (+ a b)) (list 1 2))') == 3
+
 def test_varargs():
   assert run_results('((lambda (. args) (list args)) 1 2 3)') == [[1, 2, 3]]
   assert run_results('((lambda (a . rest) (list a rest)) 1 2 3)') == [1, [2, 3]]

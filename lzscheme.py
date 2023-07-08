@@ -578,7 +578,9 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
       if Symbol('apply') == first:
         rest = cdr(assert_pair(sexpr))
         fn = car(assert_pair(rest))
+        env, fn = seval(env, fn)
         args = car(assert_pair(cdr(assert_pair(rest))))
+        env, args = seval(env, args)
         call_sexpr = cons(assert_not_none(fn), assert_pair(args))
         return seval(env, call_sexpr)
 
