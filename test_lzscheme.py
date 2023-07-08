@@ -116,6 +116,9 @@ def test_argument_scoping():
   assert str(result) != '1234'
   assert result == 'a'
 
+def test_define_evals_value():
+  assert run_results('(define x (+ 1 2)) x') == 3
+
 def test_higher_order_fn():
   result = run_results('''
     (define thunk

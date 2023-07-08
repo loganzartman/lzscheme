@@ -564,7 +564,8 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
 
       if Symbol('define') == first:
         name, value = assert_pair(cdr(sexpr))
-        env.define(assert_symbol(name), value)
+        env, value = seval(env, value)
+        env.define(assert_symbol(name), assert_not_none(value))
         return env, None
 
       if Symbol('begin') == first:
