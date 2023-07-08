@@ -309,11 +309,11 @@ def python_fn(env: Env, bindings: Sexpr, source: Sexpr):
 
   return env, py_result
 
-def abort_fn(_):
-  raise Exception('Aborted!')
+def raise_fn(env: Env, a: Any="Error occurred."):
+  raise Exception(string_value(a))
 
 builtin_env = Env.from_functions({
-  'abort': abort_fn,
+  'raise': raise_fn,
   'python': python_fn,
   'load': load_fn,
   'car': car_fn,
