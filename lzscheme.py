@@ -273,6 +273,11 @@ def load_fn(env: Env, path: Sexpr):
     env, result = run(f.read(), env)
     return env, result
 
+def not_fn(env: Env, a: Sexpr):
+  if is_truthy(a):
+    return env, Value(False)
+  return env, Value(True)
+
 def or_fn(env: Env, a: Sexpr, b: Sexpr):
   if is_truthy(a):
     return env, a
@@ -322,6 +327,7 @@ builtin_env = Env.from_functions({
   'atom?': atom_fn,
   'null?': null_fn,
   'eq?': eq_fn,
+  'not': not_fn,
   'or': or_fn,
   # 'and': and_fn,
   'list': lambda env, *items: (env, build_list(items)),
