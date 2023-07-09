@@ -1,3 +1,4 @@
+import pytest
 from typing import Any, Optional
 from lzscheme import parse as parse_internal, run, stringify_callstack
 from lzscheme import Pair, Sexpr, Env, EvalError, NativeFunction
@@ -258,3 +259,14 @@ def test_varargs():
   assert run_results('((lambda (a b c . rest) (list a b c rest)) 1 2 3 4 5)') == [1, 2, 3, [4, 5]]
   assert run_results('((lambda (. rest) (list rest)))') == [[]]
   assert run_results('((lambda (a . rest) (list a rest)) 1)') == [1, []]
+
+def test_set():
+  assert run_results('(define x 1) (set! x 2) x') == 2
+  with pytest.raises(Exception):
+    run_results('(set! x 1)')
+  with pytest.raises(Exception):
+    run_results('(define x 1) (set! "x" 2)')
+
+def test_set_scoping():
+  assert run_results('(define x 1) ((lambda () (set! x 2))) x') == 2
+  assert run_results('(define x 1) ((lambda () (begin (define x 2) (set! x 3)))) x') == 1

@@ -150,6 +150,18 @@ class Env:
           return env.names[sexpr]
         env = env.parent
     return sexpr
+
+  def set(self, name: Sexpr, value: Sexpr) -> None:
+    if isinstance(name, Symbol):
+      env = self
+      while env is not None:
+        if name in env.names:
+          env.names[name] = value
+          return
+        env = env.parent
+      raise Exception(f'{name} is not defined.')
+    else:
+      raise Exception(f'Cannot set, not a variable: {name}')
   
   @contextmanager
   def log_call(self, sexpr: Sexpr):
@@ -583,6 +595,12 @@ def seval(env: Env, sexpr: Optional[Sexpr]) -> Tuple[Env, Optional[Sexpr]]:
         env, args = seval(env, args)
         call_sexpr = cons(assert_not_none(fn), assert_pair(args))
         return seval(env, call_sexpr)
+      
+      if Symbol('set!') == first:
+        name = sexpr[1]
+        value = sexpr[2]
+        env.set(name, value)
+        return env, None
 
       if isinstance(first, NativeFunction):
         args = assert_pair(cdr(sexpr))
